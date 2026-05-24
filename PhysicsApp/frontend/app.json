@@ -8,7 +8,11 @@
     "scheme": "physics",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.bruhnfreeman.physics",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -43,6 +47,12 @@
         "projectId": "a4d49557-3060-41e6-8e01-7a86aecc68f5"
       }
     },
-    "owner": "bruhnf"
+    "owner": "bruhnf",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a4d49557-3060-41e6-8e01-7a86aecc68f5"
+    }
   }
 }
