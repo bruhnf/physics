@@ -64,6 +64,10 @@ const GOALS: Goal[] = [
 
 const CLOSE_BUFFER_M = 3; // "close" = beyond goal half-width but within this extra margin
 
+// ---------- Helpers ----------
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
 // ---------- Component ----------
 type Outcome = 'idle' | 'flying' | 'hit' | 'close' | 'miss' | 'level-complete';
 
@@ -325,7 +329,7 @@ export default function Level01Trajectory() {
         </View>
 
         <View style={styles.controlsRow}>
-          <View style={{ flex: 1 }}>
+          <View style={styles.controlCol}>
             <Slider
               label="ANGLE"
               value={angleDeg}
@@ -334,10 +338,16 @@ export default function Level01Trajectory() {
               unit="°"
               precision={1}
               disabled={isControlsDisabled}
-              onChange={setAngleDeg}
+              onChange={(v) => setAngleDeg(round1(clamp(v, ANGLE_MIN, ANGLE_MAX)))}
+            />
+            <FineStepper
+              onAdjust={(d) =>
+                setAngleDeg((prev) => round1(clamp(prev + d, ANGLE_MIN, ANGLE_MAX)))
+              }
+              disabled={isControlsDisabled}
             />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={styles.controlCol}>
             <Slider
               label="VELOCITY"
               value={velocity}
@@ -346,7 +356,13 @@ export default function Level01Trajectory() {
               unit="m/s"
               precision={1}
               disabled={isControlsDisabled}
-              onChange={setVelocity}
+              onChange={(v) => setVelocity(round1(clamp(v, VELOCITY_MIN, VELOCITY_MAX)))}
+            />
+            <FineStepper
+              onAdjust={(d) =>
+                setVelocity((prev) => round1(clamp(prev + d, VELOCITY_MIN, VELOCITY_MAX)))
+              }
+              disabled={isControlsDisabled}
             />
           </View>
         </View>
@@ -424,6 +440,51 @@ export default function Level01Trajectory() {
 }
 
 // ---------- Subcomponents ----------
+
+function FineStepper({
+  onAdjust,
+  disabled,
+  coarse = 1,
+  fine = 0.1,
+}: {
+  onAdjust: (delta: number) => void;
+  disabled?: boolean;
+  coarse?: number;
+  fine?: number;
+}) {
+  return (
+    <View style={styles.fineRow}>
+      <FineBtn label={`−${coarse}`} onPress={() => onAdjust(-coarse)} disabled={disabled} />
+      <FineBtn label={`−${fine}`} onPress={() => onAdjust(-fine)} disabled={disabled} />
+      <FineBtn label={`+${fine}`} onPress={() => onAdjust(fine)} disabled={disabled} />
+      <FineBtn label={`+${coarse}`} onPress={() => onAdjust(coarse)} disabled={disabled} />
+    </View>
+  );
+}
+
+function FineBtn({
+  label,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.fineBtn,
+        pressed && styles.fineBtnPressed,
+        disabled && styles.fineBtnDisabled,
+      ]}
+    >
+      <Text style={[styles.fineBtnText, disabled && styles.fineBtnTextDisabled]}>{label}</Text>
+    </Pressable>
+  );
+}
 
 function GoalTile({ n, state }: { n: number; state: 'done' | 'current' | 'future' }) {
   const tileStyle = [
@@ -628,6 +689,28 @@ const styles = StyleSheet.create({
   },
 
   controlsRow: { flexDirection: 'row', gap: spacing.three },
+  controlCol: { flex: 1, gap: spacing.two },
+
+  fineRow: { flexDirection: 'row', gap: spacing.one },
+  fineBtn: {
+    flex: 1,
+    paddingVertical: spacing.two,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  fineBtnPressed: { backgroundColor: colors.primaryDeep, borderColor: colors.primary },
+  fineBtnDisabled: { opacity: 0.35 },
+  fineBtnText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    letterSpacing: letterSpacing.hud,
+    fontVariant: ['tabular-nums'],
+  },
+  fineBtnTextDisabled: { opacity: 0.7 },
 
   readoutsRow: { flexDirection: 'row', gap: spacing.three },
   readout: {
