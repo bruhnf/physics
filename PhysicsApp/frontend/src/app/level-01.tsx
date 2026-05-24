@@ -115,11 +115,16 @@ export default function Level01Trajectory() {
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerHaptic = useCallback((kind: Outcome) => {
-    if (kind === 'hit') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    else if (kind === 'close') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    else if (kind === 'miss') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    // Guarded — expo-haptics native module may be missing until the next dev build.
+    const swallow = () => {};
+    if (kind === 'hit')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(swallow);
+    else if (kind === 'close')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(swallow);
+    else if (kind === 'miss')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(swallow);
     else if (kind === 'level-complete')
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(swallow);
   }, []);
 
   const advanceToNextGoal = useCallback(() => {
@@ -200,7 +205,7 @@ export default function Level01Trajectory() {
     setOutcome('flying');
     setLandingDistanceM(null);
     isFlying.value = true;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
   const reset = () => {
