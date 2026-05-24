@@ -19,11 +19,15 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
+import Animated, {
+  interpolateColor,
   runOnJS,
+  useAnimatedStyle,
   useDerivedValue,
   useFrameCallback,
   useSharedValue,
+  withSequence,
+  withTiming,
 } from 'react-native-reanimated';
 
 import { Slider } from '@/ui/Slider';
@@ -210,6 +214,10 @@ export default function Level01Trajectory() {
     setLandingDistanceM(null);
     isFlying.value = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    launchPulse.value = withSequence(
+      withTiming(1, { duration: 60 }),
+      withTiming(0, { duration: 840 }),
+    );
   };
 
   const reset = () => {
@@ -237,6 +245,16 @@ export default function Level01Trajectory() {
 
   const isControlsDisabled = outcome === 'flying' || outcome === 'level-complete';
   const isLevelComplete = outcome === 'level-complete';
+
+  // Launch-flash animation for the equation values
+  const launchPulse = useSharedValue(0);
+  const animatedEqValueStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      launchPulse.value,
+      [0, 1],
+      [colors.textPrimary, colors.primaryLight],
+    ),
+  }));
 
   const outcomeColor =
     outcome === 'hit'
@@ -367,15 +385,6 @@ export default function Level01Trajectory() {
           </View>
         </View>
 
-        <View style={styles.readoutsRow}>
-          <Readout label="PREDICTED RANGE" value={`${predictedRangeM.toFixed(1)} m`} />
-          <Readout
-            label="LAST LANDING"
-            value={landingDistanceM === null ? '—' : `${landingDistanceM.toFixed(1)} m`}
-            valueColor={outcomeColor}
-          />
-        </View>
-
         <View style={styles.actionsRow}>
           <ActionButton
             label="LAUNCH"
@@ -391,21 +400,52 @@ export default function Level01Trajectory() {
           />
         </View>
 
-        {outcome === 'hit' && (
-          <Text style={[styles.outcomeText, { color: colors.success }]}>
-            GOAL {currentGoalIndex + 1} CLEARED // advancing…
+        <View style={styles.equationPanel}>
+          <Text style={styles.equationEyebrow}>RANGE EQUATION // VACUUM</Text>
+          <Text style={styles.equationSymbolic}>R = v² · sin(2θ) / g</Text>
+          <Text style={styles.equationSubst}>
+            R = (
+            <Animated.Text style={[styles.eqValue, animatedEqValueStyle]}>
+              {velocity.toFixed(1)}
+            </Animated.Text>
+            )² · sin(2 ·{' '}
+            <Animated.Text style={[styles.eqValue, animatedEqValueStyle]}>
+              {angleDeg.toFixed(1)}
+            </Animated.Text>
+            °) / 9.81 ={' '}
+            <Animated.Text style={[styles.eqValue, animatedEqValueStyle]}>
+              {predictedRangeM.toFixed(1)}
+            </Animated.Text>{' '}
+            m
           </Text>
-        )}
-        {outcome === 'close' && landingDistanceM !== null && (
-          <Text style={[styles.outcomeText, { color: colors.warning }]}>
-            CLOSE // off by {Math.abs(landingDistanceM - currentGoal.distanceM).toFixed(1)} m
+          <Text style={styles.equationActualRow}>
+            <Text style={styles.equationActualLabel}>LAST LANDING: </Text>
+            <Text style={[styles.equationActualValue, { color: outcomeColor }]}>
+              {landingDistanceM === null ? '—' : `${landingDistanceM.toFixed(1)} m`}
+            </Text>
+            {outcome === 'hit' && (
+              <Text style={[styles.equationActualValue, { color: colors.success }]}>
+                {' // GOAL '}
+                {currentGoalIndex + 1}
+                {' CLEARED'}
+              </Text>
+            )}
+            {outcome === 'close' && landingDistanceM !== null && (
+              <Text style={[styles.equationActualValue, { color: colors.warning }]}>
+                {' // CLOSE — off by '}
+                {Math.abs(landingDistanceM - currentGoal.distanceM).toFixed(1)}
+                {' m'}
+              </Text>
+            )}
+            {outcome === 'miss' && landingDistanceM !== null && (
+              <Text style={[styles.equationActualValue, { color: colors.failure }]}>
+                {' // MISS — off by '}
+                {Math.abs(landingDistanceM - currentGoal.distanceM).toFixed(1)}
+                {' m'}
+              </Text>
+            )}
           </Text>
-        )}
-        {outcome === 'miss' && landingDistanceM !== null && (
-          <Text style={[styles.outcomeText, { color: colors.failure }]}>
-            MISS // off by {Math.abs(landingDistanceM - currentGoal.distanceM).toFixed(1)} m
-          </Text>
-        )}
+        </View>
 
         <View style={styles.goalStrip}>
           {GOALS.map((_, i) => (
@@ -760,12 +800,57 @@ const styles = StyleSheet.create({
   actionTextGhost: { color: colors.textPrimary },
   actionTextDisabled: { opacity: 0.7 },
 
-  outcomeText: {
+  equationPanel: {
+    paddingVertical: spacing.three,
+    paddingHorizontal: spacing.three,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.one,
+  },
+  equationEyebrow: {
+    color: colors.primary,
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    letterSpacing: letterSpacing.hud,
+  },
+  equationSymbolic: {
+    color: colors.primaryLight,
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    letterSpacing: letterSpacing.label,
+    fontWeight: '600',
+  },
+  equationSubst: {
+    color: colors.textSecondary,
     fontFamily: fonts.mono,
     fontSize: 12,
+    letterSpacing: letterSpacing.label,
+    lineHeight: 18,
+  },
+  eqValue: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '700',
+  },
+  equationActualRow: {
+    marginTop: spacing.one,
+    paddingTop: spacing.two,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    fontFamily: fonts.mono,
+    fontSize: 10,
     letterSpacing: letterSpacing.hud,
-    textAlign: 'center',
-    marginTop: -spacing.one,
+  },
+  equationActualLabel: {
+    color: colors.textSecondary,
+  },
+  equationActualValue: {
+    color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
   },
 
   goalStrip: {
