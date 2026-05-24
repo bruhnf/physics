@@ -1,0 +1,56 @@
+# Node / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Expo
+.expo/
+.expo-shared/
+.expo-test-bundle/
+dist/
+web-build/
+
+# EAS / build outputs
+*.apk
+*.ipa
+*.aab
+
+# Native folders (only present if `expo prebuild` runs)
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/xcuserdata/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Coverage / test outputs
+coverage/
+.nyc_output/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Project-local scratch
+scratch/
