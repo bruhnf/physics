@@ -409,15 +409,15 @@ export default function Level01Trajectory() {
         <Animated.View style={[styles.equationPanel, animatedPanelStyle]}>
           <Text style={styles.equationEyebrow}>RANGE EQUATION // VACUUM</Text>
           <Text style={styles.equationSymbolic}>R = v² · sin(2θ) / g</Text>
-          <Text style={styles.equationSubst}>
-            {'R = ('}
-            <Text style={styles.eqValue}>{velocity.toFixed(1)}</Text>
-            {')² · sin(2 · '}
-            <Text style={styles.eqValue}>{angleDeg.toFixed(1)}</Text>
-            {'°) / 9.81 = '}
-            <Text style={styles.eqValue}>{predictedRangeM.toFixed(1)}</Text>
-            {' m'}
-          </Text>
+
+          <View style={styles.eqValuesBlock}>
+            <EqRow symbol="v" value={velocity.toFixed(1)} unit="m/s" />
+            <EqRow symbol="θ" value={angleDeg.toFixed(1)} unit="°" />
+            <EqRow symbol="g" value="9.81" unit="m/s²" muted />
+            <View style={styles.eqDivider} />
+            <EqRow symbol="R" value={predictedRangeM.toFixed(1)} unit="m" emphasis />
+          </View>
+
           <Text style={styles.equationActualRow}>
             <Text style={styles.equationActualLabel}>LAST LANDING: </Text>
             <Text style={[styles.equationActualValue, { color: outcomeColor }]}>
@@ -480,6 +480,35 @@ export default function Level01Trajectory() {
 }
 
 // ---------- Subcomponents ----------
+
+function EqRow({
+  symbol,
+  value,
+  unit,
+  emphasis,
+  muted,
+}: {
+  symbol: string;
+  value: string;
+  unit: string;
+  emphasis?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <View style={styles.eqRow}>
+      <Text style={[styles.eqSymbol, emphasis && styles.eqSymbolEmphasis, muted && styles.eqMuted]}>
+        {symbol}
+      </Text>
+      <Text style={[styles.eqEquals, muted && styles.eqMuted]}>=</Text>
+      <Text
+        style={[styles.eqValueText, emphasis && styles.eqValueTextEmphasis, muted && styles.eqMuted]}
+      >
+        {value}
+      </Text>
+      <Text style={[styles.eqUnit, muted && styles.eqMuted]}>{unit}</Text>
+    </View>
+  );
+}
 
 function FineStepper({
   onAdjust,
@@ -829,12 +858,58 @@ const styles = StyleSheet.create({
     letterSpacing: letterSpacing.label,
     lineHeight: 18,
   },
-  eqValue: {
-    color: colors.textPrimary,
+  eqValuesBlock: {
+    gap: spacing.one,
+    paddingLeft: spacing.three,
+    paddingTop: spacing.one,
+  },
+  eqRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.two,
+  },
+  eqSymbol: {
+    color: colors.primary,
     fontFamily: fonts.mono,
     fontSize: 13,
-    fontVariant: ['tabular-nums'],
     fontWeight: '700',
+    width: 18,
+  },
+  eqSymbolEmphasis: {
+    color: colors.primaryLight,
+    fontSize: 16,
+  },
+  eqEquals: {
+    color: colors.textSecondary,
+    fontFamily: fonts.mono,
+    fontSize: 13,
+  },
+  eqValueText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
+    minWidth: 56,
+  },
+  eqValueTextEmphasis: {
+    color: colors.primaryLight,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  eqUnit: {
+    color: colors.textSecondary,
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    letterSpacing: letterSpacing.hud,
+  },
+  eqMuted: {
+    opacity: 0.55,
+  },
+  eqDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.one,
   },
   equationActualRow: {
     marginTop: spacing.one,
