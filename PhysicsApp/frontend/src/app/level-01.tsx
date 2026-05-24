@@ -246,13 +246,19 @@ export default function Level01Trajectory() {
   const isControlsDisabled = outcome === 'flying' || outcome === 'level-complete';
   const isLevelComplete = outcome === 'level-complete';
 
-  // Launch-flash animation for the equation values
+  // Launch-flash animation — pulses the equation panel's border + background
+  // when LAUNCH fires so the math visibly "snaps into focus" for the shot.
   const launchPulse = useSharedValue(0);
-  const animatedEqValueStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
+  const animatedPanelStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(
       launchPulse.value,
       [0, 1],
-      [colors.textPrimary, colors.primaryLight],
+      [colors.border, colors.primary],
+    ),
+    backgroundColor: interpolateColor(
+      launchPulse.value,
+      [0, 1],
+      [colors.surface, colors.surfaceAlt],
     ),
   }));
 
@@ -400,23 +406,17 @@ export default function Level01Trajectory() {
           />
         </View>
 
-        <View style={styles.equationPanel}>
+        <Animated.View style={[styles.equationPanel, animatedPanelStyle]}>
           <Text style={styles.equationEyebrow}>RANGE EQUATION // VACUUM</Text>
           <Text style={styles.equationSymbolic}>R = v² · sin(2θ) / g</Text>
           <Text style={styles.equationSubst}>
-            R = (
-            <Animated.Text style={[styles.eqValue, animatedEqValueStyle]}>
-              {velocity.toFixed(1)}
-            </Animated.Text>
-            )² · sin(2 ·{' '}
-            <Animated.Text style={[styles.eqValue, animatedEqValueStyle]}>
-              {angleDeg.toFixed(1)}
-            </Animated.Text>
-            °) / 9.81 ={' '}
-            <Animated.Text style={[styles.eqValue, animatedEqValueStyle]}>
-              {predictedRangeM.toFixed(1)}
-            </Animated.Text>{' '}
-            m
+            {'R = ('}
+            <Text style={styles.eqValue}>{velocity.toFixed(1)}</Text>
+            {')² · sin(2 · '}
+            <Text style={styles.eqValue}>{angleDeg.toFixed(1)}</Text>
+            {'°) / 9.81 = '}
+            <Text style={styles.eqValue}>{predictedRangeM.toFixed(1)}</Text>
+            {' m'}
           </Text>
           <Text style={styles.equationActualRow}>
             <Text style={styles.equationActualLabel}>LAST LANDING: </Text>
@@ -445,7 +445,7 @@ export default function Level01Trajectory() {
               </Text>
             )}
           </Text>
-        </View>
+        </Animated.View>
 
         <View style={styles.goalStrip}>
           {GOALS.map((_, i) => (
@@ -830,6 +830,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   eqValue: {
+    color: colors.textPrimary,
     fontFamily: fonts.mono,
     fontSize: 13,
     fontVariant: ['tabular-nums'],
