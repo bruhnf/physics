@@ -1,18 +1,22 @@
 /**
  * Level 01 — Trajectory (projectile motion on Earth).
  *
- * Engine-proof level: exercises Skia rendering + Reanimated 4 worklet-driven
- * physics tick + interactive HUD. We hand-integrate projectile motion here
- * because Matter.js's gravity is unitless and complicates "real m/s²" mapping;
- * for kinematics this is three lines of math. Multi-body / collision levels
- * (Level 02+) will use Matter.js where its solver actually earns its keep.
- *
- * Physics state lives in Reanimated shared values, so the entire tick runs
- * on the UI thread — never the JS thread (per the resource-conservation
- * contract in docs/product/visualization-theme.md).
+ * Engine-proof + polished:
+ * - Hand-integrated projectile motion in a Reanimated useFrameCallback worklet
+ *   (physics state lives in shared values, tick runs on UI thread).
+ * - Matter.js NOT used here — unit mapping for "real m/s²" gets awkward; for
+ *   kinematics this is three lines of math. Matter.js earns its install at
+ *   Level 02+ where its solver actually matters (collisions, springs, etc.).
+ * - Continuous sliders (precision matters for the hardest goals).
+ * - 10-goal progression (data is inline for now; extract once Level 02 reveals
+ *   what variation the abstraction needs to support).
+ * - Haptic feedback via expo-haptics.
+ * - Collapsible instructional overlay with the kinematics formula.
  */
 import { Canvas, Circle, Line, Path, Rect, Skia } from '@shopify/react-native-skia';
-import { useCallback, useMemo, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -22,47 +26,76 @@ import {
   useSharedValue,
 } from 'react-native-reanimated';
 
+import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
+// ---------- Physics ----------
 const GRAVITY = 9.81; // m/s²
-const TARGET_DISTANCE_M = 50;
-const TARGET_HALF_WIDTH_M = 1.5;
-const HIT_TOLERANCE_M = 2;
-const CLOSE_TOLERANCE_M = 5;
 
+// ---------- Viewport ----------
+const WORLD_WIDTH_M = 130; // fits hardest goal (target at 120m) with margin
+const CANNON_WORLD_X = 10; // meters from left edge
+
+// ---------- Controls ----------
 const ANGLE_MIN = 5;
 const ANGLE_MAX = 85;
 const VELOCITY_MIN = 5;
 const VELOCITY_MAX = 60;
 
-type Outcome = 'idle' | 'hit' | 'close' | 'miss';
+// ---------- Goals ----------
+type Goal = {
+  distanceM: number;
+  widthM: number;
+  hint: string;
+};
+
+const GOALS: Goal[] = [
+  { distanceM: 30, widthM: 3.0, hint: 'Warm-up — any reasonable angle works' },
+  { distanceM: 50, widthM: 2.0, hint: 'Find a v + θ pair that lands here' },
+  { distanceM: 70, widthM: 2.0, hint: 'Further out — more energy needed' },
+  { distanceM: 40, widthM: 1.0, hint: 'Narrower — be precise' },
+  { distanceM: 60, widthM: 1.0, hint: 'Two solutions exist: low arc + high arc' },
+  { distanceM: 80, widthM: 1.0, hint: 'Reaching out — favor 45°' },
+  { distanceM: 25, widthM: 0.5, hint: 'Tiny + close — try a steep arc' },
+  { distanceM: 90, widthM: 1.0, hint: 'Push the engine — every degree counts' },
+  { distanceM: 100, widthM: 0.8, hint: 'Approaching max range — 45° gives most reach per m/s' },
+  { distanceM: 110, widthM: 0.5, hint: 'The final shot — calibrate carefully' },
+];
+
+const CLOSE_BUFFER_M = 3; // "close" = beyond goal half-width but within this extra margin
+
+// ---------- Component ----------
+type Outcome = 'idle' | 'flying' | 'hit' | 'close' | 'miss' | 'level-complete';
 
 export default function Level01Trajectory() {
   const { width: screenWidth } = useWindowDimensions();
-  const canvasHeight = 320;
+  const canvasHeight = 260;
 
   const [angleDeg, setAngleDeg] = useState(45);
   const [velocity, setVelocity] = useState(25);
+  const [currentGoalIndex, setCurrentGoalIndex] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [landingDistanceM, setLandingDistanceM] = useState<number | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
 
-  // Viewport: 70m of world fits across the canvas, with 5m margin on each side.
-  const worldWidthM = 70;
-  const pxPerM = screenWidth / worldWidthM;
-  const cannonWorldX = 5;
+  const pxPerM = screenWidth / WORLD_WIDTH_M;
   const groundPxY = canvasHeight - 24;
+  const cannonPxX = CANNON_WORLD_X * pxPerM;
+
+  const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
+  const targetWorldX = CANNON_WORLD_X + currentGoal.distanceM;
+  const targetPxX = targetWorldX * pxPerM;
+  const targetPxWidth = currentGoal.widthM * pxPerM;
 
   // Physics state (UI thread)
-  const posX = useSharedValue(cannonWorldX); // meters
-  const posY = useSharedValue(0); // meters above ground
-  const velX = useSharedValue(0); // m/s
-  const velY = useSharedValue(0); // m/s
+  const posX = useSharedValue(CANNON_WORLD_X);
+  const posY = useSharedValue(0);
+  const velX = useSharedValue(0);
+  const velY = useSharedValue(0);
   const isFlying = useSharedValue(false);
+  const trail = useSharedValue<number[]>([]);
 
-  // Trail of recent positions (sampled each frame), in pixels
-  const trail = useSharedValue<number[]>([]); // flat [x0, y0, x1, y1, ...]
-
-  // Pixel-space derivations (UI thread, fed straight into Skia)
   const projPxX = useDerivedValue(() => posX.value * pxPerM);
   const projPxY = useDerivedValue(() => groundPxY - posY.value * pxPerM);
 
@@ -78,13 +111,58 @@ export default function Level01Trajectory() {
     return path;
   });
 
-  const onLanded = useCallback((finalXMeters: number) => {
-    const distance = finalXMeters - cannonWorldX;
-    setLandingDistanceM(distance);
-    const offset = Math.abs(distance - TARGET_DISTANCE_M);
-    if (offset <= HIT_TOLERANCE_M) setOutcome('hit');
-    else if (offset <= CLOSE_TOLERANCE_M) setOutcome('close');
-    else setOutcome('miss');
+  // Advance timer for auto-progression after a hit
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerHaptic = useCallback((kind: Outcome) => {
+    if (kind === 'hit') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    else if (kind === 'close') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    else if (kind === 'miss') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    else if (kind === 'level-complete')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  const advanceToNextGoal = useCallback(() => {
+    setCurrentGoalIndex((idx) => {
+      const next = idx + 1;
+      if (next >= GOALS.length) {
+        setOutcome('level-complete');
+        triggerHaptic('level-complete');
+        return idx; // clamp
+      }
+      setOutcome('idle');
+      setLandingDistanceM(null);
+      return next;
+    });
+  }, [triggerHaptic]);
+
+  const onLanded = useCallback(
+    (finalXMeters: number) => {
+      const distance = finalXMeters - CANNON_WORLD_X;
+      setLandingDistanceM(distance);
+      const offset = Math.abs(distance - currentGoal.distanceM);
+      const hitWindow = currentGoal.widthM / 2;
+      let result: Outcome;
+      if (offset <= hitWindow) result = 'hit';
+      else if (offset <= hitWindow + CLOSE_BUFFER_M) result = 'close';
+      else result = 'miss';
+
+      setOutcome(result);
+      triggerHaptic(result);
+
+      if (result === 'hit') {
+        setCompletedCount((c) => c + 1);
+        // Brief celebration, then advance
+        advanceTimer.current = setTimeout(advanceToNextGoal, 1500);
+      }
+    },
+    [currentGoal.distanceM, currentGoal.widthM, triggerHaptic, advanceToNextGoal],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    };
   }, []);
 
   useFrameCallback((info) => {
@@ -92,11 +170,10 @@ export default function Level01Trajectory() {
     if (!isFlying.value) return;
     const dt = Math.min((info.timeSincePreviousFrame ?? 16.667) / 1000, 0.05);
 
-    velY.value -= GRAVITY * dt; // y is "up positive"
+    velY.value -= GRAVITY * dt;
     posX.value += velX.value * dt;
     posY.value += velY.value * dt;
 
-    // Append to trail (cap length so it doesn't grow unbounded)
     const px = posX.value * pxPerM;
     const py = groundPxY - posY.value * pxPerM;
     const next = trail.value.slice();
@@ -104,7 +181,6 @@ export default function Level01Trajectory() {
     if (next.length > 240) next.splice(0, next.length - 240);
     trail.value = next;
 
-    // Landing detection
     if (posY.value <= 0 && velY.value < 0) {
       posY.value = 0;
       isFlying.value = false;
@@ -113,20 +189,24 @@ export default function Level01Trajectory() {
   });
 
   const launch = () => {
+    if (outcome === 'level-complete') return;
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
     const rad = (angleDeg * Math.PI) / 180;
-    posX.value = cannonWorldX;
+    posX.value = CANNON_WORLD_X;
     posY.value = 0;
     velX.value = velocity * Math.cos(rad);
     velY.value = velocity * Math.sin(rad);
     trail.value = [];
-    setOutcome('idle');
+    setOutcome('flying');
     setLandingDistanceM(null);
     isFlying.value = true;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const reset = () => {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
     isFlying.value = false;
-    posX.value = cannonWorldX;
+    posX.value = CANNON_WORLD_X;
     posY.value = 0;
     velX.value = 0;
     velY.value = 0;
@@ -135,15 +215,19 @@ export default function Level01Trajectory() {
     setLandingDistanceM(null);
   };
 
-  // Predicted range (vacuum formula) — shown live as a teaching anchor.
+  const resetLevel = () => {
+    reset();
+    setCurrentGoalIndex(0);
+    setCompletedCount(0);
+  };
+
   const predictedRangeM = useMemo(() => {
     const rad = (angleDeg * Math.PI) / 180;
     return (velocity * velocity * Math.sin(2 * rad)) / GRAVITY;
   }, [angleDeg, velocity]);
 
-  const targetPxX = (cannonWorldX + TARGET_DISTANCE_M) * pxPerM;
-  const targetPxWidth = TARGET_HALF_WIDTH_M * 2 * pxPerM;
-  const cannonPxX = cannonWorldX * pxPerM;
+  const isControlsDisabled = outcome === 'flying' || outcome === 'level-complete';
+  const isLevelComplete = outcome === 'level-complete';
 
   const outcomeColor =
     outcome === 'hit'
@@ -158,154 +242,197 @@ export default function Level01Trajectory() {
     <SafeAreaView edges={['bottom']} style={styles.root}>
       <View style={styles.canvasWrap}>
         <Canvas style={{ width: screenWidth, height: canvasHeight }}>
-          {/* Horizon strip — augmentation-theme Earth */}
-          <Rect x={0} y={groundPxY} width={screenWidth} height={canvasHeight - groundPxY} color="#1a2a1f" />
-          {/* Ground line */}
+          {/* Augmentation-theme Earth strip */}
+          <Rect
+            x={0}
+            y={groundPxY}
+            width={screenWidth}
+            height={canvasHeight - groundPxY}
+            color="#1a2a1f"
+          />
           <Line
             p1={{ x: 0, y: groundPxY }}
             p2={{ x: screenWidth, y: groundPxY }}
             color={colors.border}
             strokeWidth={1}
           />
-          {/* Distance gridlines every 10m */}
-          {Array.from({ length: 7 }).map((_, i) => {
-            const xWorld = cannonWorldX + (i + 1) * 10;
-            const xPx = xWorld * pxPerM;
+          {/* 10m gridlines */}
+          {Array.from({ length: 12 }).map((_, i) => {
+            const xPx = (CANNON_WORLD_X + (i + 1) * 10) * pxPerM;
+            if (xPx > screenWidth) return null;
             return (
               <Line
                 key={i}
                 p1={{ x: xPx, y: groundPxY }}
-                p2={{ x: xPx, y: groundPxY + 6 }}
+                p2={{ x: xPx, y: groundPxY + 4 }}
                 color={colors.textDim}
                 strokeWidth={1}
               />
             );
           })}
 
-          {/* Target zone */}
+          {/* Target */}
           <Rect
             x={targetPxX - targetPxWidth / 2}
-            y={groundPxY - 4}
+            y={groundPxY - 6}
             width={targetPxWidth}
-            height={8}
-            color={colors.success}
+            height={10}
+            color={isLevelComplete ? colors.success : colors.success}
           />
 
-          {/* Cannon base */}
+          {/* Cannon */}
           <Circle cx={cannonPxX} cy={groundPxY} r={10} color={colors.primaryDeep} />
           <Circle cx={cannonPxX} cy={groundPxY} r={5} color={colors.primary} />
 
-          {/* Trajectory trail */}
+          {/* Trajectory + projectile */}
           <Path path={trailPath} color={colors.primaryLight} style="stroke" strokeWidth={1.5} />
-
-          {/* Projectile */}
           <Circle cx={projPxX} cy={projPxY} r={5} color={colors.primaryLight} />
         </Canvas>
 
-        {/* Distance markers (overlaid) */}
+        {/* Distance markers overlay */}
         <View style={[styles.markerLabel, { left: cannonPxX - 12, top: groundPxY + 8 }]}>
           <Text style={styles.markerText}>0 m</Text>
         </View>
-        <View style={[styles.markerLabel, { left: targetPxX - 16, top: groundPxY + 8 }]}>
-          <Text style={[styles.markerText, { color: colors.success }]}>{TARGET_DISTANCE_M} m</Text>
+        <View style={[styles.markerLabel, { left: targetPxX - 18, top: groundPxY + 8 }]}>
+          <Text style={[styles.markerText, { color: colors.success }]}>
+            {currentGoal.distanceM} m
+          </Text>
         </View>
       </View>
 
       <View style={styles.hud}>
+        <View style={styles.goalHeader}>
+          <View style={styles.counterBox}>
+            <Text style={styles.counterLabel}>GOAL</Text>
+            <Text style={styles.counterValue}>
+              {Math.min(currentGoalIndex + 1, GOALS.length)}
+              <Text style={styles.counterTotal}>/{GOALS.length}</Text>
+            </Text>
+          </View>
+          <View style={styles.goalText}>
+            <Text style={styles.goalTitle}>
+              HIT {currentGoal.widthM.toFixed(1)} m TARGET @ {currentGoal.distanceM} m
+            </Text>
+            <Text style={styles.goalHint} numberOfLines={2}>
+              {currentGoal.hint}
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.controlsRow}>
-          <Stepper
-            label="ANGLE"
-            value={angleDeg}
-            unit="°"
-            step={1}
-            bigStep={5}
-            min={ANGLE_MIN}
-            max={ANGLE_MAX}
-            onChange={setAngleDeg}
-          />
-          <Stepper
-            label="VELOCITY"
-            value={velocity}
-            unit="m/s"
-            step={1}
-            bigStep={5}
-            min={VELOCITY_MIN}
-            max={VELOCITY_MAX}
-            onChange={setVelocity}
-          />
+          <View style={{ flex: 1 }}>
+            <Slider
+              label="ANGLE"
+              value={angleDeg}
+              min={ANGLE_MIN}
+              max={ANGLE_MAX}
+              unit="°"
+              precision={1}
+              disabled={isControlsDisabled}
+              onChange={setAngleDeg}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Slider
+              label="VELOCITY"
+              value={velocity}
+              min={VELOCITY_MIN}
+              max={VELOCITY_MAX}
+              unit="m/s"
+              precision={1}
+              disabled={isControlsDisabled}
+              onChange={setVelocity}
+            />
+          </View>
         </View>
 
         <View style={styles.readoutsRow}>
           <Readout label="PREDICTED RANGE" value={`${predictedRangeM.toFixed(1)} m`} />
           <Readout
-            label="LANDED AT"
+            label="LAST LANDING"
             value={landingDistanceM === null ? '—' : `${landingDistanceM.toFixed(1)} m`}
             valueColor={outcomeColor}
           />
         </View>
 
         <View style={styles.actionsRow}>
-          <ActionButton label="LAUNCH" onPress={launch} kind="primary" />
+          <ActionButton
+            label="LAUNCH"
+            onPress={launch}
+            kind="primary"
+            disabled={isControlsDisabled}
+          />
           <ActionButton label="RESET" onPress={reset} kind="ghost" />
+          <ActionButton
+            label={showInstructions ? 'CLOSE' : 'INFO'}
+            onPress={() => setShowInstructions((s) => !s)}
+            kind="ghost"
+          />
         </View>
 
-        {outcome !== 'idle' && (
-          <Text style={[styles.outcomeText, { color: outcomeColor }]}>
-            {outcome === 'hit' && 'HIT // target achieved'}
-            {outcome === 'close' && 'CLOSE // tune your variables'}
-            {outcome === 'miss' && 'MISS // try again'}
+        {outcome === 'hit' && (
+          <Text style={[styles.outcomeText, { color: colors.success }]}>
+            GOAL {currentGoalIndex + 1} CLEARED // advancing…
           </Text>
         )}
+        {outcome === 'close' && landingDistanceM !== null && (
+          <Text style={[styles.outcomeText, { color: colors.warning }]}>
+            CLOSE // off by {Math.abs(landingDistanceM - currentGoal.distanceM).toFixed(1)} m
+          </Text>
+        )}
+        {outcome === 'miss' && landingDistanceM !== null && (
+          <Text style={[styles.outcomeText, { color: colors.failure }]}>
+            MISS // off by {Math.abs(landingDistanceM - currentGoal.distanceM).toFixed(1)} m
+          </Text>
+        )}
+
+        <View style={styles.goalStrip}>
+          {GOALS.map((_, i) => (
+            <GoalTile
+              key={i}
+              n={i + 1}
+              state={
+                i < currentGoalIndex || (i === currentGoalIndex && isLevelComplete)
+                  ? 'done'
+                  : i === currentGoalIndex
+                    ? 'current'
+                    : 'future'
+              }
+            />
+          ))}
+        </View>
       </View>
+
+      {showInstructions && (
+        <InstructionsOverlay onClose={() => setShowInstructions(false)} />
+      )}
+
+      {isLevelComplete && (
+        <LevelCompleteOverlay
+          completedCount={completedCount}
+          onReset={resetLevel}
+          onBack={() => router.back()}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
-function Stepper({
-  label,
-  value,
-  unit,
-  step,
-  bigStep,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  unit: string;
-  step: number;
-  bigStep: number;
-  min: number;
-  max: number;
-  onChange: (next: number) => void;
-}) {
-  const clamp = (n: number) => Math.min(max, Math.max(min, n));
-  return (
-    <View style={styles.stepper}>
-      <Text style={styles.stepperLabel}>{label}</Text>
-      <Text style={styles.stepperValue}>
-        {value}
-        <Text style={styles.stepperUnit}> {unit}</Text>
-      </Text>
-      <View style={styles.stepperButtons}>
-        <StepperButton label={`−${bigStep}`} onPress={() => onChange(clamp(value - bigStep))} />
-        <StepperButton label={`−${step}`} onPress={() => onChange(clamp(value - step))} />
-        <StepperButton label={`+${step}`} onPress={() => onChange(clamp(value + step))} />
-        <StepperButton label={`+${bigStep}`} onPress={() => onChange(clamp(value + bigStep))} />
-      </View>
-    </View>
-  );
-}
+// ---------- Subcomponents ----------
 
-function StepperButton({ label, onPress }: { label: string; onPress: () => void }) {
+function GoalTile({ n, state }: { n: number; state: 'done' | 'current' | 'future' }) {
+  const tileStyle = [
+    styles.tile,
+    state === 'done' ? styles.tileDone : state === 'current' ? styles.tileCurrent : styles.tileFuture,
+  ];
+  const textColor =
+    state === 'done' ? colors.success : state === 'current' ? colors.primary : colors.textDim;
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]}
-    >
-      <Text style={styles.stepBtnText}>{label}</Text>
-    </Pressable>
+    <View style={tileStyle}>
+      <Text style={[styles.tileText, { color: textColor }]}>
+        {state === 'done' ? '✓' : n.toString().padStart(2, '0')}
+      </Text>
+    </View>
   );
 }
 
@@ -330,24 +457,29 @@ function ActionButton({
   label,
   onPress,
   kind,
+  disabled,
 }: {
   label: string;
   onPress: () => void;
   kind: 'primary' | 'ghost';
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.action,
         kind === 'primary' ? styles.actionPrimary : styles.actionGhost,
         pressed && (kind === 'primary' ? styles.actionPrimaryPressed : styles.actionGhostPressed),
+        disabled && styles.actionDisabled,
       ]}
     >
       <Text
         style={[
           styles.actionText,
           kind === 'primary' ? styles.actionTextPrimary : styles.actionTextGhost,
+          disabled && styles.actionTextDisabled,
         ]}
       >
         {label}
@@ -355,6 +487,73 @@ function ActionButton({
     </Pressable>
   );
 }
+
+function InstructionsOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <Pressable style={styles.overlay} onPress={onClose}>
+      <View style={styles.overlayCard} onStartShouldSetResponder={() => true}>
+        <Text style={styles.overlayEyebrow}>KINEMATICS // PROJECTILE</Text>
+        <Text style={styles.overlayTitle}>Range Equation</Text>
+        <Text style={styles.formula}>R = v² · sin(2θ) / g</Text>
+        <Text style={styles.overlayBody}>
+          On Earth (g = 9.81 m/s²), the horizontal distance a projectile travels
+          before landing depends only on launch velocity and angle — air
+          resistance ignored.
+        </Text>
+        <Text style={styles.overlayBullet}>
+          • <Text style={styles.overlayBold}>θ = 45°</Text> gives the maximum range for any given velocity (sin(2·45°) = sin(90°) = 1).
+        </Text>
+        <Text style={styles.overlayBullet}>
+          • Two angles (θ and 90°−θ) hit the same distance — one low arc, one
+          high arc. Try it.
+        </Text>
+        <Text style={styles.overlayBullet}>
+          • Doubling velocity <Text style={styles.overlayBold}>quadruples</Text> the range (R ∝ v²).
+        </Text>
+        <Pressable onPress={onClose} style={styles.overlayClose}>
+          <Text style={styles.overlayCloseText}>CLOSE</Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+function LevelCompleteOverlay({
+  completedCount,
+  onReset,
+  onBack,
+}: {
+  completedCount: number;
+  onReset: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.overlay} pointerEvents="auto">
+      <View style={styles.overlayCard}>
+        <Text style={[styles.overlayEyebrow, { color: colors.success }]}>EXPERIMENT COMPLETE</Text>
+        <Text style={styles.overlayTitle}>Level 01 Cleared</Text>
+        <Text style={styles.overlayBigStat}>
+          {completedCount}
+          <Text style={styles.overlayBigStatTotal}>/{GOALS.length}</Text>
+        </Text>
+        <Text style={styles.overlayBody}>
+          You've internalized projectile motion. Next experiment will introduce
+          two-body interaction.
+        </Text>
+        <View style={{ gap: spacing.two, marginTop: spacing.three }}>
+          <Pressable onPress={onBack} style={[styles.overlayClose, styles.overlayCtaPrimary]}>
+            <Text style={[styles.overlayCloseText, { color: colors.bg }]}>BACK TO LEVELS</Text>
+          </Pressable>
+          <Pressable onPress={onReset} style={styles.overlayClose}>
+            <Text style={styles.overlayCloseText}>REPLAY</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---------- Styles ----------
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
@@ -369,55 +568,61 @@ const styles = StyleSheet.create({
 
   hud: {
     flex: 1,
-    padding: spacing.four,
-    gap: spacing.four,
+    padding: spacing.three,
+    gap: spacing.three,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
 
-  controlsRow: { flexDirection: 'row', gap: spacing.three },
-  stepper: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.three,
-    gap: spacing.two,
+  goalHeader: {
+    flexDirection: 'row',
+    gap: spacing.three,
+    alignItems: 'stretch',
   },
-  stepperLabel: {
+  counterBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.three,
+    paddingVertical: spacing.two,
+    minWidth: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.primaryDeep,
+  },
+  counterLabel: {
     color: colors.primary,
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 9,
     letterSpacing: letterSpacing.hud,
   },
-  stepperValue: {
+  counterValue: {
     color: colors.textPrimary,
     fontFamily: fonts.mono,
-    fontSize: 28,
-    letterSpacing: letterSpacing.label,
+    fontSize: 22,
     fontVariant: ['tabular-nums'],
+    letterSpacing: letterSpacing.label,
   },
-  stepperUnit: {
+  counterTotal: {
     color: colors.textSecondary,
     fontSize: 12,
-    letterSpacing: letterSpacing.hud,
   },
-  stepperButtons: { flexDirection: 'row', gap: spacing.one, marginTop: spacing.one },
-  stepBtn: {
-    flex: 1,
-    paddingVertical: spacing.two,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-  },
-  stepBtnPressed: { backgroundColor: colors.primaryDeep },
-  stepBtnText: {
+  goalText: { flex: 1, justifyContent: 'center', gap: spacing.one },
+  goalTitle: {
     color: colors.textPrimary,
     fontFamily: fonts.mono,
     fontSize: 12,
     letterSpacing: letterSpacing.hud,
+    fontWeight: '600',
   },
+  goalHint: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+
+  controlsRow: { flexDirection: 'row', gap: spacing.three },
 
   readoutsRow: { flexDirection: 'row', gap: spacing.three },
   readout: {
@@ -433,18 +638,18 @@ const styles = StyleSheet.create({
   readoutLabel: {
     color: colors.textSecondary,
     fontFamily: fonts.mono,
-    fontSize: 10,
+    fontSize: 9,
     letterSpacing: letterSpacing.hud,
   },
   readoutValue: {
     color: colors.textPrimary,
     fontFamily: fonts.mono,
-    fontSize: 16,
+    fontSize: 15,
     letterSpacing: letterSpacing.label,
     fontVariant: ['tabular-nums'],
   },
 
-  actionsRow: { flexDirection: 'row', gap: spacing.three },
+  actionsRow: { flexDirection: 'row', gap: spacing.two },
   action: {
     flex: 1,
     paddingVertical: spacing.three,
@@ -456,20 +661,140 @@ const styles = StyleSheet.create({
   actionPrimaryPressed: { backgroundColor: colors.primaryDeep, borderColor: colors.primaryDeep },
   actionGhost: { backgroundColor: 'transparent', borderColor: colors.border },
   actionGhostPressed: { backgroundColor: colors.surface, borderColor: colors.primary },
+  actionDisabled: { opacity: 0.4 },
   actionText: {
     fontFamily: fonts.mono,
-    fontSize: 14,
+    fontSize: 13,
     letterSpacing: letterSpacing.hud,
     fontWeight: '600',
   },
   actionTextPrimary: { color: colors.bg },
   actionTextGhost: { color: colors.textPrimary },
+  actionTextDisabled: { opacity: 0.7 },
 
   outcomeText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 12,
     letterSpacing: letterSpacing.hud,
     textAlign: 'center',
-    marginTop: spacing.two,
+    marginTop: -spacing.one,
+  },
+
+  goalStrip: {
+    flexDirection: 'row',
+    gap: spacing.one,
+    marginTop: 'auto',
+    paddingTop: spacing.two,
+  },
+  tile: {
+    flex: 1,
+    height: 28,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileDone: { borderColor: colors.success, backgroundColor: 'transparent' },
+  tileCurrent: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  tileFuture: { borderColor: colors.border, backgroundColor: 'transparent' },
+  tileText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    letterSpacing: letterSpacing.hud,
+    fontWeight: '600',
+  },
+
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(13, 17, 23, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.four,
+  },
+  overlayCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.primaryDeep,
+    padding: spacing.four,
+    gap: spacing.two,
+    width: '100%',
+    maxWidth: 380,
+  },
+  overlayEyebrow: {
+    color: colors.primary,
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    letterSpacing: letterSpacing.hud,
+  },
+  overlayTitle: {
+    color: colors.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: 18,
+    letterSpacing: letterSpacing.label,
+    fontWeight: '600',
+  },
+  formula: {
+    color: colors.primaryLight,
+    fontFamily: fonts.mono,
+    fontSize: 22,
+    letterSpacing: letterSpacing.label,
+    textAlign: 'center',
+    paddingVertical: spacing.three,
+  },
+  overlayBody: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  overlayBullet: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  overlayBold: { color: colors.textPrimary, fontWeight: '600' },
+  overlayBigStat: {
+    color: colors.success,
+    fontFamily: fonts.mono,
+    fontSize: 56,
+    letterSpacing: letterSpacing.label,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+    paddingVertical: spacing.two,
+  },
+  overlayBigStatTotal: { color: colors.textSecondary, fontSize: 28 },
+  overlayClose: {
+    paddingVertical: spacing.three,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    marginTop: spacing.three,
+  },
+  overlayCtaPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    marginTop: 0,
+  },
+  overlayCloseText: {
+    color: colors.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    letterSpacing: letterSpacing.hud,
+    fontWeight: '600',
   },
 });
