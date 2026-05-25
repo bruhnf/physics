@@ -77,6 +77,12 @@ export default function LevelSelect() {
             <LevelTile key={level.number} level={level} />
           ))}
         </View>
+
+        <Link href={'/settings' as Href} asChild>
+          <Pressable style={({ pressed }) => [styles.settingsBtn, pressed && styles.settingsBtnPressed]}>
+            <Text style={styles.settingsBtnText}>⚙ SETTINGS</Text>
+          </Pressable>
+        </Link>
       </ScrollView>
     </SafeAreaView>
   );
@@ -102,6 +108,9 @@ function LevelTile({ level }: { level: LevelDef }) {
         <View style={styles.tileMeta}>
           <Text style={styles.tileName}>{level.name}</Text>
           <Text style={styles.tileSubtitle}>{level.subtitle}</Text>
+        </View>
+        <View style={styles.progressBadge}>
+          <Text style={styles.progressBadgeText}>—/10</Text>
         </View>
         <Text style={styles.tileChevron}></Text>
       </Pressable>
@@ -168,5 +177,37 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontFamily: fonts.mono,
     fontSize: 18,
+  },
+  progressBadge: {
+    paddingHorizontal: spacing.two,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  progressBadgeText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    letterSpacing: letterSpacing.hud,
+    fontVariant: ['tabular-nums'],
+  },
+  settingsBtn: {
+    marginTop: spacing.four,
+    paddingVertical: spacing.three,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  settingsBtnPressed: { backgroundColor: colors.surface, borderColor: colors.primary },
+  settingsBtnText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    letterSpacing: letterSpacing.hud,
+    fontWeight: '600',
   },
 });

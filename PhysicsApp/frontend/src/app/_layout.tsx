@@ -49,6 +49,7 @@ export default function RootLayout() {
         <Stack.Screen name="level-04" options={{ title: 'LEVEL 04 — PENDULUM' }} />
         <Stack.Screen name="level-05" options={{ title: 'LEVEL 05 — SPRINGS' }} />
         <Stack.Screen name="level-06" options={{ title: 'LEVEL 06 — ENERGY' }} />
+        <Stack.Screen name="settings" options={{ title: 'SETTINGS' }} />
       </Stack>
     </GestureHandlerRootView>
   );

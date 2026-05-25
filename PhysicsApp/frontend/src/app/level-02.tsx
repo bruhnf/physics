@@ -277,8 +277,6 @@ export default function Level02Collisions() {
       }
       setOutcome('idle');
       setFinalTargetX(null);
-      setM1(DEFAULT_MASS);
-      setV1(DEFAULT_VEL);
       return next;
     });
   }, [triggerFeedback]);
@@ -394,8 +392,6 @@ export default function Level02Collisions() {
     targetVx.value = 0;
     setOutcome('idle');
     setFinalTargetX(null);
-    setM1(DEFAULT_MASS);
-    setV1(DEFAULT_VEL);
   };
 
   const resetLevel = () => {
@@ -427,13 +423,15 @@ export default function Level02Collisions() {
     <SafeAreaView edges={['bottom']} style={styles.root}>
       <View style={styles.canvasWrap}>
         <Canvas style={{ width: screenWidth, height: canvasHeight }}>
+          {/* Background — warm industrial tint */}
+          <Rect x={0} y={0} width={screenWidth} height={trackY + 6} color="#15110d" />
           {/* Track surface */}
           <Rect
             x={0}
             y={trackY + 6}
             width={screenWidth}
             height={canvasHeight - trackY - 6}
-            color="#1f242c"
+            color="#2a221c"
           />
           <Line
             p1={{ x: 0, y: trackY + 6 }}

@@ -109,11 +109,11 @@ const GOALS: Goal[] = [
     hint: 'Heavy friction — short throw, tight target',
   },
   {
-    surface: 'WOOD',
-    mu: 0.2,
-    zoneCenterM: 13,
-    zoneWidthM: 2.5,
-    hint: 'Same surface, smaller window',
+    surface: 'CARPET',
+    mu: 0.4,
+    zoneCenterM: 5,
+    zoneWidthM: 1.5,
+    hint: 'Carpet bites hard — moderate range, deliberate angle',
   },
   {
     surface: 'SANDPAPER',
@@ -265,8 +265,6 @@ export default function Level03InclinedPlane() {
       }
       setOutcome('idle');
       setFinalPosM(null);
-      setH(DEFAULT_H);
-      setTheta(DEFAULT_THETA);
       return next;
     });
   }, [triggerFeedback]);
@@ -436,8 +434,6 @@ export default function Level03InclinedPlane() {
     vFlat.value = 0;
     setOutcome('idle');
     setFinalPosM(null);
-    setH(DEFAULT_H);
-    setTheta(DEFAULT_THETA);
   };
 
   const resetLevel = () => {
@@ -468,15 +464,15 @@ export default function Level03InclinedPlane() {
     <SafeAreaView edges={['bottom']} style={styles.root}>
       <View style={styles.canvasWrap}>
         <Canvas style={{ width: screenWidth, height: canvasHeight }}>
-          {/* Sky strip */}
-          <Rect x={0} y={0} width={screenWidth} height={baselineY} color="#0d1117" />
-          {/* Ground below baseline */}
+          {/* Sky — slightly warm dark, earthy theme */}
+          <Rect x={0} y={0} width={screenWidth} height={baselineY} color="#0f0e0d" />
+          {/* Ground — rich brown earth */}
           <Rect
             x={0}
             y={baselineY}
             width={screenWidth}
             height={canvasHeight - baselineY}
-            color="#2a1f1a"
+            color="#3a261a"
           />
           {/* Baseline (flat surface) */}
           <Line

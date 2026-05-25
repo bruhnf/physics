@@ -103,6 +103,18 @@ export default function Level04Pendulum() {
   const pivotPxX = PIVOT_WORLD_X * pxPerM;
   const pivotPxY = baselineY - H_TOTAL_M * pxPerM;
 
+  // Deterministic star field for the night sky backdrop
+  const STARS = useMemo(() => {
+    const arr: { x: number; y: number; r: number }[] = [];
+    for (let i = 0; i < 28; i++) {
+      const x = (i * 173 + 37) % screenWidth;
+      const y = ((i * 97 + 19) % (baselineY - 30)) + 10;
+      const r = 0.6 + ((i * 31) % 100) / 200;
+      arr.push({ x, y, r });
+    }
+    return arr;
+  }, [screenWidth, baselineY]);
+
   const [L, setL] = useState(DEFAULT_L);
   const [thetaMax, setThetaMax] = useState(DEFAULT_THETA);
   const [currentGoalIndex, setCurrentGoalIndex] = useState(0);
@@ -205,8 +217,6 @@ export default function Level04Pendulum() {
       }
       setOutcome('idle');
       setLandingX(null);
-      setL(DEFAULT_L);
-      setThetaMax(DEFAULT_THETA);
       return next;
     });
   }, [triggerFeedback]);
@@ -383,8 +393,6 @@ export default function Level04Pendulum() {
     trail.value = [];
     setOutcome('idle');
     setLandingX(null);
-    setL(DEFAULT_L);
-    setThetaMax(DEFAULT_THETA);
   };
 
   const resetLevel = () => {
@@ -414,15 +422,19 @@ export default function Level04Pendulum() {
     <SafeAreaView edges={['bottom']} style={styles.root}>
       <View style={styles.canvasWrap}>
         <Canvas style={{ width: screenWidth, height: canvasHeight }}>
-          {/* Background sky */}
-          <Rect x={0} y={0} width={screenWidth} height={baselineY} color="#0d1117" />
+          {/* Night sky — deep indigo */}
+          <Rect x={0} y={0} width={screenWidth} height={baselineY} color="#0a0e22" />
+          {/* Star field */}
+          {STARS.map((s, i) => (
+            <Circle key={i} cx={s.x} cy={s.y} r={s.r} color="#E6EDF3" />
+          ))}
           {/* Ground */}
           <Rect
             x={0}
             y={baselineY}
             width={screenWidth}
             height={canvasHeight - baselineY}
-            color="#1a1f2a"
+            color="#1a1429"
           />
           <Line
             p1={{ x: 0, y: baselineY }}

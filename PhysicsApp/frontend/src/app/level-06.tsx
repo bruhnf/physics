@@ -263,8 +263,6 @@ export default function Level06Energy() {
       }
       setOutcome('idle');
       setFinalHeight(null);
-      setHStart(DEFAULT_H);
-      setCartMass(DEFAULT_M);
       return next;
     });
   }, [triggerFeedback]);
@@ -440,8 +438,6 @@ export default function Level06Energy() {
     v.value = 0;
     setOutcome('idle');
     setFinalHeight(null);
-    setHStart(DEFAULT_H);
-    setCartMass(DEFAULT_M);
   };
 
   const resetLevel = () => {
@@ -471,14 +467,22 @@ export default function Level06Energy() {
     <SafeAreaView edges={['bottom']} style={styles.root}>
       <View style={styles.canvasWrap}>
         <Canvas style={{ width: screenWidth, height: canvasHeight }}>
-          {/* Background */}
-          <Rect x={0} y={0} width={screenWidth} height={baselineY} color="#0d1117" />
+          {/* Sunset sky — warm dark above, amber horizon glow */}
+          <Rect x={0} y={0} width={screenWidth} height={baselineY - 40} color="#0e0a08" />
+          <Rect
+            x={0}
+            y={baselineY - 40}
+            width={screenWidth}
+            height={40}
+            color="#1f1408"
+          />
+          {/* Ground — warm earth */}
           <Rect
             x={0}
             y={baselineY}
             width={screenWidth}
             height={canvasHeight - baselineY}
-            color="#1a1f2a"
+            color="#2a1c10"
           />
           {/* Friction zone — shaded band in valley */}
           <Rect

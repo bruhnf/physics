@@ -255,8 +255,6 @@ export default function Level01Trajectory() {
       }
       setOutcome('idle');
       setLandingDistanceM(null);
-      setAngleDeg(DEFAULT_ANGLE);
-      setVelocity(DEFAULT_VELOCITY);
       return next;
     });
   }, [triggerFeedback]);
@@ -374,8 +372,6 @@ export default function Level01Trajectory() {
     trail.value = [];
     setOutcome('idle');
     setLandingDistanceM(null);
-    setAngleDeg(DEFAULT_ANGLE);
-    setVelocity(DEFAULT_VELOCITY);
   };
 
   const resetLevel = () => {

@@ -195,8 +195,6 @@ export default function Level05Springs() {
       }
       setOutcome('idle');
       setFinalBlockX(null);
-      setX(DEFAULT_X);
-      setK(DEFAULT_K);
       return next;
     });
   }, [triggerFeedback]);
@@ -305,8 +303,6 @@ export default function Level05Springs() {
     blockVx.value = 0;
     setOutcome('idle');
     setFinalBlockX(null);
-    setX(DEFAULT_X);
-    setK(DEFAULT_K);
   };
 
   const resetLevel = () => {
@@ -336,16 +332,18 @@ export default function Level05Springs() {
     <SafeAreaView edges={['bottom']} style={styles.root}>
       <View style={styles.canvasWrap}>
         <Canvas style={{ width: screenWidth, height: canvasHeight }}>
-          {/* Ground band */}
+          {/* Background — warm dark machinist tone */}
+          <Rect x={0} y={0} width={screenWidth} height={trackY + 8} color="#140c0c" />
+          {/* Ground band — crimson industrial */}
           <Rect
             x={0}
             y={trackY + 8}
             width={screenWidth}
             height={canvasHeight - trackY - 8}
-            color="#1f242c"
+            color="#2a1a1d"
           />
-          {/* Wall on left */}
-          <Rect x={wallPxX - 6} y={trackY - 30} width={6} height={48} color={colors.primaryDeep} />
+          {/* Wall on left — red industrial */}
+          <Rect x={wallPxX - 6} y={trackY - 30} width={6} height={48} color="#7d2828" />
           {/* Track baseline */}
           <Line
             p1={{ x: wallPxX, y: trackY + 8 }}
