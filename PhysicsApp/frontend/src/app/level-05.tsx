@@ -33,12 +33,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSounds } from '@/hooks/useSounds';
+import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
 import { EqRow } from '@/ui/EqRow';
 import { FineStepper } from '@/ui/FineStepper';
 import { GoalCounter } from '@/ui/GoalCounter';
 import { GoalTileStrip } from '@/ui/GoalTileStrip';
 import { LevelCompleteOverlay } from '@/ui/LevelCompleteOverlay';
+import { LevelInstructions } from '@/ui/LevelInstructions';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -112,6 +114,10 @@ export default function Level05Springs() {
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [finalBlockX, setFinalBlockX] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const instructionsEnabled = useSettings((s) => s.showInstructions);
+  const sessionDismissed = useSettings((s) => !!s.dismissedThisSession['level-05']);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
+  const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
   const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
@@ -521,6 +527,15 @@ export default function Level05Springs() {
           nextHint="Next experiment: energy conservation — KE ↔ PE on a curved track."
           onReset={resetLevel}
           onBack={() => router.back()}
+        />
+      )}
+
+      {showStartOverlay && (
+        <LevelInstructions
+          levelId="level-05"
+          title="Level 05 — Springs"
+          explanation="Compress the SPRING by x meters and pick its STIFFNESS k. On release, spring energy launches the block down a friction track. Goal: block comes to rest inside the green zone."
+          onDismiss={() => setOverlayDismissed(true)}
         />
       )}
     </SafeAreaView>

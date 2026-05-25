@@ -38,12 +38,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSounds } from '@/hooks/useSounds';
+import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
 import { EqRow } from '@/ui/EqRow';
 import { FineStepper } from '@/ui/FineStepper';
 import { GoalCounter } from '@/ui/GoalCounter';
 import { GoalTileStrip } from '@/ui/GoalTileStrip';
 import { LevelCompleteOverlay } from '@/ui/LevelCompleteOverlay';
+import { LevelInstructions } from '@/ui/LevelInstructions';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -180,6 +182,10 @@ export default function Level02Collisions() {
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [finalTargetX, setFinalTargetX] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const instructionsEnabled = useSettings((s) => s.showInstructions);
+  const sessionDismissed = useSettings((s) => !!s.dismissedThisSession['level-02']);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
+  const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
 
   const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
   const pxPerM = screenWidth / WORLD_WIDTH_M;
@@ -630,6 +636,15 @@ export default function Level02Collisions() {
           nextHint="Next experiment: inclined plane — friction + Newton's 2nd law in action."
           onReset={resetLevel}
           onBack={() => router.back()}
+        />
+      )}
+
+      {showStartOverlay && (
+        <LevelInstructions
+          levelId="level-02"
+          title="Level 02 — Collisions"
+          explanation="Launch your BLUE ball at the ORANGE target. Adjust your ball's MASS and VELOCITY. Goal: knock the orange target into the green zone and have it come to REST inside — friction stops both balls."
+          onDismiss={() => setOverlayDismissed(true)}
         />
       )}
     </SafeAreaView>

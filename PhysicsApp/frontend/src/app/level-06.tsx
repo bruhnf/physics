@@ -35,12 +35,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSounds } from '@/hooks/useSounds';
+import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
 import { EqRow } from '@/ui/EqRow';
 import { FineStepper } from '@/ui/FineStepper';
 import { GoalCounter } from '@/ui/GoalCounter';
 import { GoalTileStrip } from '@/ui/GoalTileStrip';
 import { LevelCompleteOverlay } from '@/ui/LevelCompleteOverlay';
+import { LevelInstructions } from '@/ui/LevelInstructions';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -174,6 +176,10 @@ export default function Level06Energy() {
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [finalHeight, setFinalHeight] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const instructionsEnabled = useSettings((s) => s.showInstructions);
+  const sessionDismissed = useSettings((s) => !!s.dismissedThisSession['level-06']);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
+  const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
   const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
@@ -670,6 +676,15 @@ export default function Level06Energy() {
           nextHint="You've completed the foundational physics curriculum. More experiments to come — orbital mechanics, EM, and beyond."
           onReset={resetLevel}
           onBack={() => router.back()}
+        />
+      )}
+
+      {showStartOverlay && (
+        <LevelInstructions
+          levelId="level-06"
+          title="Level 06 — Energy"
+          explanation="The cart starts at HEIGHT h on the left hill. It slides down, across a friction valley, then up the right hill. Goal: cart stops at the target height marker on the right hill. Try the MASS slider — does it actually matter?"
+          onDismiss={() => setOverlayDismissed(true)}
         />
       )}
     </SafeAreaView>

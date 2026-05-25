@@ -39,12 +39,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSounds } from '@/hooks/useSounds';
+import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
 import { EqRow } from '@/ui/EqRow';
 import { FineStepper } from '@/ui/FineStepper';
 import { GoalCounter } from '@/ui/GoalCounter';
 import { GoalTileStrip } from '@/ui/GoalTileStrip';
 import { LevelCompleteOverlay } from '@/ui/LevelCompleteOverlay';
+import { LevelInstructions } from '@/ui/LevelInstructions';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -176,6 +178,10 @@ export default function Level03InclinedPlane() {
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [finalPosM, setFinalPosM] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const instructionsEnabled = useSettings((s) => s.showInstructions);
+  const sessionDismissed = useSettings((s) => !!s.dismissedThisSession['level-03']);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
+  const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
   const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
@@ -664,6 +670,15 @@ export default function Level03InclinedPlane() {
           nextHint="Next experiment: pendulum — periodic motion and SHM."
           onReset={resetLevel}
           onBack={() => router.back()}
+        />
+      )}
+
+      {showStartOverlay && (
+        <LevelInstructions
+          levelId="level-03"
+          title="Level 03 — Inclined Plane"
+          explanation="A block slides down a ramp onto a flat surface. Adjust HEIGHT (h) and ANGLE (θ). Each goal uses a different surface — ICE is slippery, SANDPAPER is grippy, CARPET bites hard. Goal: stop the block inside the green zone on the flat."
+          onDismiss={() => setOverlayDismissed(true)}
         />
       )}
     </SafeAreaView>

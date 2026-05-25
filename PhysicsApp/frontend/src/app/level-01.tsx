@@ -41,12 +41,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSounds } from '@/hooks/useSounds';
+import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
 import { EqRow } from '@/ui/EqRow';
 import { FineStepper } from '@/ui/FineStepper';
 import { GoalCounter } from '@/ui/GoalCounter';
 import { GoalTileStrip } from '@/ui/GoalTileStrip';
 import { LevelCompleteOverlay } from '@/ui/LevelCompleteOverlay';
+import { LevelInstructions } from '@/ui/LevelInstructions';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -148,6 +150,11 @@ export default function Level01Trajectory() {
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [landingDistanceM, setLandingDistanceM] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  // Pre-experiment instructional overlay
+  const instructionsEnabled = useSettings((s) => s.showInstructions);
+  const sessionDismissed = useSettings((s) => !!s.dismissedThisSession['level-01']);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
+  const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   // Bumped on resetLevel() to force wall re-randomization even when
   // currentGoalIndex resets to its existing value (0 → 0 wouldn't trigger
   // the goal-change effect on its own).
@@ -634,6 +641,15 @@ export default function Level01Trajectory() {
           nextHint="Next experiment will introduce two-body interaction — collisions + momentum."
           onReset={resetLevel}
           onBack={() => router.back()}
+        />
+      )}
+
+      {showStartOverlay && (
+        <LevelInstructions
+          levelId="level-01"
+          title="Level 01 — Trajectory"
+          explanation="Adjust ANGLE and VELOCITY with the sliders (or the +/− buttons for precise tuning). Your goal: land the projectile inside the green target zone. From Goal 4 onward, walls appear between you and the target — you'll need a higher arc to clear them."
+          onDismiss={() => setOverlayDismissed(true)}
         />
       )}
     </SafeAreaView>

@@ -38,12 +38,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSounds } from '@/hooks/useSounds';
+import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
 import { EqRow } from '@/ui/EqRow';
 import { FineStepper } from '@/ui/FineStepper';
 import { GoalCounter } from '@/ui/GoalCounter';
 import { GoalTileStrip } from '@/ui/GoalTileStrip';
 import { LevelCompleteOverlay } from '@/ui/LevelCompleteOverlay';
+import { LevelInstructions } from '@/ui/LevelInstructions';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -122,6 +124,10 @@ export default function Level04Pendulum() {
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [landingX, setLandingX] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const instructionsEnabled = useSettings((s) => s.showInstructions);
+  const sessionDismissed = useSettings((s) => !!s.dismissedThisSession['level-04']);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
+  const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
   const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
@@ -613,6 +619,15 @@ export default function Level04Pendulum() {
           nextHint="Next experiment: springs — Hooke's law and the other classic SHM system."
           onReset={resetLevel}
           onBack={() => router.back()}
+        />
+      )}
+
+      {showStartOverlay && (
+        <LevelInstructions
+          levelId="level-04"
+          title="Level 04 — Pendulum"
+          explanation="Tune the STRING LENGTH and SWING AMPLITUDE. The bob swings down and auto-releases at the bottom — becoming a horizontal projectile. Goal: bob lands in the green zone on the ground."
+          onDismiss={() => setOverlayDismissed(true)}
         />
       )}
     </SafeAreaView>
