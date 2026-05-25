@@ -1,0 +1,75 @@
+// STEM Lab content schema.
+// Engines (the gameplay code) live in the app bundle. This schema stores the
+// CONTENT each engine plays — categories, experiments, ordered goal configs,
+// instructional copy. Per-experiment config shape is loose (JSON column)
+// because each engine has its own goal shape (Trajectory's goal isn't the
+// same shape as Pendulum's).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Tier {
+  BASE
+  INTERMEDIATE
+  ADVANCED
+}
+
+model Category {
+  id          String       @id @default(cuid())
+  slug        String       @unique // "physics", "math", "engineering"
+  name        String                // "Physics", "Math", "Engineering"
+  description String?
+  iconSlug    String?               // icon identifier the frontend resolves
+  accentHex   String?               // e.g. "#378ADD" — per-category tint
+  order       Int           @default(0)
+  experiments Experiment[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Experiment {
+  id           String     @id @default(cuid())
+  slug         String     @unique  // "trajectory", "collisions", "pid-cartpole"
+  name         String                // "Trajectory"
+  subtitle     String?               // "Projectile motion // Earth gravity"
+  conceptCode  String?               // "KINEMATICS" — eyebrow text
+  engineKey    String                // tells the frontend which engine to mount
+                                     // ("trajectory", "collisions", "inclined-plane",
+                                     //  "pendulum", "springs", "energy", "pid-cartpole", ...)
+  tier         Tier                  // BASE / INTERMEDIATE / ADVANCED
+  order        Int       @default(0) // sort within (category, tier)
+  category     Category  @relation(fields: [categoryId], references: [id])
+  categoryId   String
+
+  // Instructional overlay shown when player enters the experiment.
+  // Shape: { title: string; explanation: string }
+  instructions Json?
+
+  // Ordered goals. The shape inside `config` depends on `engineKey` — the
+  // matching frontend engine knows how to interpret it.
+  goals        Goal[]
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([categoryId, tier, order])
+}
+
+model Goal {
+  id           String     @id @default(cuid())
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  experimentId String
+  order        Int                   // 1..10
+  hint         String?
+  config       Json                  // engine-specific shape, see Experiment.engineKey
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([experimentId, order])
+}
