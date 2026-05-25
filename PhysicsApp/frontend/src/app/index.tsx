@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { Link, type Href } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -6,11 +6,14 @@ import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
 type LevelStatus = 'available' | 'locked';
 
+// href typed as string because expo-router's typedRoutes only regenerates the
+// route union when `expo start` runs; new level stubs added in the same session
+// aren't visible to tsc yet. Cast to Href at the Link call site.
 type LevelDef = {
   number: string;
   name: string;
   subtitle: string;
-  href: '/level-01';
+  href: string;
   status: LevelStatus;
 };
 
@@ -20,6 +23,41 @@ const LEVELS: LevelDef[] = [
     name: 'Trajectory',
     subtitle: 'Projectile motion // Earth gravity',
     href: '/level-01',
+    status: 'available',
+  },
+  {
+    number: '02',
+    name: 'Collisions',
+    subtitle: 'Momentum // 1D elastic',
+    href: '/level-02',
+    status: 'available',
+  },
+  {
+    number: '03',
+    name: 'Inclined Plane',
+    subtitle: "Friction // Newton's 2nd law",
+    href: '/level-03',
+    status: 'available',
+  },
+  {
+    number: '04',
+    name: 'Pendulum',
+    subtitle: 'Periodic motion // SHM',
+    href: '/level-04',
+    status: 'available',
+  },
+  {
+    number: '05',
+    name: 'Springs',
+    subtitle: "Hooke's law // oscillation",
+    href: '/level-05',
+    status: 'available',
+  },
+  {
+    number: '06',
+    name: 'Energy',
+    subtitle: 'KE // PE // conservation',
+    href: '/level-06',
     status: 'available',
   },
 ];
@@ -58,7 +96,7 @@ function LevelTile({ level }: { level: LevelDef }) {
   }
 
   return (
-    <Link href={level.href} asChild>
+    <Link href={level.href as Href} asChild>
       <Pressable style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}>
         <Text style={styles.tileNumber}>{level.number}</Text>
         <View style={styles.tileMeta}>
