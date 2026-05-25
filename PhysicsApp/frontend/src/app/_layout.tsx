@@ -42,7 +42,15 @@ export default function RootLayout() {
           headerShadowVisible: false,
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'PHYSICS // EXPERIMENTS' }} />
+        <Stack.Screen name="index" options={{ title: 'STEM LAB' }} />
+        <Stack.Screen
+          name="intro"
+          options={{ title: 'INTRO', headerShown: false }}
+        />
+        <Stack.Screen
+          name="category/[slug]"
+          options={{ title: 'CATEGORY' }}
+        />
         <Stack.Screen name="level-01" options={{ title: 'LEVEL 01 — TRAJECTORY' }} />
         <Stack.Screen name="level-02" options={{ title: 'LEVEL 02 — COLLISIONS' }} />
         <Stack.Screen name="level-03" options={{ title: 'LEVEL 03 — INCLINED PLANE' }} />

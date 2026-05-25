@@ -16,18 +16,22 @@ import { create } from 'zustand';
 type SettingsState = {
   showInstructions: boolean;
   dismissedThisSession: Record<string, boolean>;
+  hasSeenIntro: boolean;
   setShowInstructions: (v: boolean) => void;
   dismissLevel: (id: string) => void;
   clearAllDismissals: () => void;
+  setHasSeenIntro: (v: boolean) => void;
 };
 
 export const useSettings = create<SettingsState>((set) => ({
   showInstructions: true,
   dismissedThisSession: {},
+  hasSeenIntro: false,
   setShowInstructions: (v) => set({ showInstructions: v }),
   dismissLevel: (id) =>
     set((state) => ({
       dismissedThisSession: { ...state.dismissedThisSession, [id]: true },
     })),
   clearAllDismissals: () => set({ dismissedThisSession: {}, showInstructions: true }),
+  setHasSeenIntro: (v) => set({ hasSeenIntro: v }),
 }));

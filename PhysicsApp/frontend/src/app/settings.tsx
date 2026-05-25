@@ -9,6 +9,7 @@ export default function Settings() {
   const showInstructions = useSettings((s) => s.showInstructions);
   const setShowInstructions = useSettings((s) => s.setShowInstructions);
   const clearAllDismissals = useSettings((s) => s.clearAllDismissals);
+  const setHasSeenIntro = useSettings((s) => s.setHasSeenIntro);
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.root}>
@@ -43,6 +44,19 @@ export default function Settings() {
           <Text style={[styles.rowHelp, { paddingHorizontal: spacing.three, marginTop: spacing.two }]}>
             Re-enables the per-experiment overlay AND clears any per-level dismissals
             from this session, so each experiment will show its overlay next time you open it.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Pressable
+            onPress={() => setHasSeenIntro(false)}
+            style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.btnText}>SHOW "WHAT IS STEM?" INTRO AGAIN</Text>
+          </Pressable>
+          <Text style={[styles.rowHelp, { paddingHorizontal: spacing.three, marginTop: spacing.two }]}>
+            Re-shows the welcome intro on the next launch — useful for refreshers
+            or showing the app to someone new.
           </Text>
         </View>
 
