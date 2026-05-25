@@ -41,6 +41,12 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSounds } from '@/hooks/useSounds';
+import { ActionButton } from '@/ui/ActionButton';
+import { EqRow } from '@/ui/EqRow';
+import { FineStepper } from '@/ui/FineStepper';
+import { GoalCounter } from '@/ui/GoalCounter';
+import { GoalTileStrip } from '@/ui/GoalTileStrip';
+import { LevelCompleteOverlay } from '@/ui/LevelCompleteOverlay';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -502,23 +508,12 @@ export default function Level01Trajectory() {
       </View>
 
       <View style={styles.hud}>
-        <View style={styles.goalHeader}>
-          <View style={styles.counterBox}>
-            <Text style={styles.counterLabel}>GOAL</Text>
-            <Text style={styles.counterValue}>
-              {Math.min(currentGoalIndex + 1, GOALS.length)}
-              <Text style={styles.counterTotal}>/{GOALS.length}</Text>
-            </Text>
-          </View>
-          <View style={styles.goalText}>
-            <Text style={styles.goalTitle}>
-              HIT {currentGoal.widthM.toFixed(1)} m TARGET @ {currentGoal.distanceM} m
-            </Text>
-            <Text style={styles.goalHint} numberOfLines={2}>
-              {currentGoal.hint}
-            </Text>
-          </View>
-        </View>
+        <GoalCounter
+          index={currentGoalIndex}
+          total={GOALS.length}
+          title={`HIT ${currentGoal.widthM.toFixed(1)} m TARGET @ ${currentGoal.distanceM} m`}
+          hint={currentGoal.hint}
+        />
 
         <View style={styles.controlsRow}>
           <View style={styles.controlCol}>
@@ -624,21 +619,11 @@ export default function Level01Trajectory() {
           </Text>
         </Animated.View>
 
-        <View style={styles.goalStrip}>
-          {GOALS.map((_, i) => (
-            <GoalTile
-              key={i}
-              n={i + 1}
-              state={
-                i < currentGoalIndex || (i === currentGoalIndex && isLevelComplete)
-                  ? 'done'
-                  : i === currentGoalIndex
-                    ? 'current'
-                    : 'future'
-              }
-            />
-          ))}
-        </View>
+        <GoalTileStrip
+          total={GOALS.length}
+          currentIndex={currentGoalIndex}
+          levelComplete={isLevelComplete}
+        />
       </View>
 
       {showInstructions && (
@@ -648,6 +633,9 @@ export default function Level01Trajectory() {
       {isLevelComplete && (
         <LevelCompleteOverlay
           completedCount={completedCount}
+          totalGoals={GOALS.length}
+          levelName="Level 01 — Trajectory"
+          nextHint="Next experiment will introduce two-body interaction — collisions + momentum."
           onReset={resetLevel}
           onBack={() => router.back()}
         />
@@ -657,148 +645,6 @@ export default function Level01Trajectory() {
 }
 
 // ---------- Subcomponents ----------
-
-function EqRow({
-  symbol,
-  value,
-  unit,
-  emphasis,
-  muted,
-}: {
-  symbol: string;
-  value: string;
-  unit: string;
-  emphasis?: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <View style={styles.eqRow}>
-      <Text style={[styles.eqSymbol, emphasis && styles.eqSymbolEmphasis, muted && styles.eqMuted]}>
-        {symbol}
-      </Text>
-      <Text style={[styles.eqEquals, muted && styles.eqMuted]}>=</Text>
-      <Text
-        style={[styles.eqValueText, emphasis && styles.eqValueTextEmphasis, muted && styles.eqMuted]}
-      >
-        {value}
-      </Text>
-      <Text style={[styles.eqUnit, muted && styles.eqMuted]}>{unit}</Text>
-    </View>
-  );
-}
-
-function FineStepper({
-  onAdjust,
-  disabled,
-  coarse = 1,
-  fine = 0.1,
-}: {
-  onAdjust: (delta: number) => void;
-  disabled?: boolean;
-  coarse?: number;
-  fine?: number;
-}) {
-  return (
-    <View style={styles.fineRow}>
-      <FineBtn label={`−${coarse}`} onPress={() => onAdjust(-coarse)} disabled={disabled} />
-      <FineBtn label={`−${fine}`} onPress={() => onAdjust(-fine)} disabled={disabled} />
-      <FineBtn label={`+${fine}`} onPress={() => onAdjust(fine)} disabled={disabled} />
-      <FineBtn label={`+${coarse}`} onPress={() => onAdjust(coarse)} disabled={disabled} />
-    </View>
-  );
-}
-
-function FineBtn({
-  label,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.fineBtn,
-        pressed && styles.fineBtnPressed,
-        disabled && styles.fineBtnDisabled,
-      ]}
-    >
-      <Text style={[styles.fineBtnText, disabled && styles.fineBtnTextDisabled]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function GoalTile({ n, state }: { n: number; state: 'done' | 'current' | 'future' }) {
-  const tileStyle = [
-    styles.tile,
-    state === 'done' ? styles.tileDone : state === 'current' ? styles.tileCurrent : styles.tileFuture,
-  ];
-  const textColor =
-    state === 'done' ? colors.success : state === 'current' ? colors.primary : colors.textDim;
-  return (
-    <View style={tileStyle}>
-      <Text style={[styles.tileText, { color: textColor }]}>
-        {state === 'done' ? '✓' : n.toString().padStart(2, '0')}
-      </Text>
-    </View>
-  );
-}
-
-function Readout({
-  label,
-  value,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
-  return (
-    <View style={styles.readout}>
-      <Text style={styles.readoutLabel}>{label}</Text>
-      <Text style={[styles.readoutValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
-    </View>
-  );
-}
-
-function ActionButton({
-  label,
-  onPress,
-  kind,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  kind: 'primary' | 'ghost';
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.action,
-        kind === 'primary' ? styles.actionPrimary : styles.actionGhost,
-        pressed && (kind === 'primary' ? styles.actionPrimaryPressed : styles.actionGhostPressed),
-        disabled && styles.actionDisabled,
-      ]}
-    >
-      <Text
-        style={[
-          styles.actionText,
-          kind === 'primary' ? styles.actionTextPrimary : styles.actionTextGhost,
-          disabled && styles.actionTextDisabled,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
 
 function InstructionsOverlay({ onClose }: { onClose: () => void }) {
   return (
@@ -827,41 +673,6 @@ function InstructionsOverlay({ onClose }: { onClose: () => void }) {
         </Pressable>
       </View>
     </Pressable>
-  );
-}
-
-function LevelCompleteOverlay({
-  completedCount,
-  onReset,
-  onBack,
-}: {
-  completedCount: number;
-  onReset: () => void;
-  onBack: () => void;
-}) {
-  return (
-    <View style={styles.overlay} pointerEvents="auto">
-      <View style={styles.overlayCard}>
-        <Text style={[styles.overlayEyebrow, { color: colors.success }]}>EXPERIMENT COMPLETE</Text>
-        <Text style={styles.overlayTitle}>Level 01 Cleared</Text>
-        <Text style={styles.overlayBigStat}>
-          {completedCount}
-          <Text style={styles.overlayBigStatTotal}>/{GOALS.length}</Text>
-        </Text>
-        <Text style={styles.overlayBody}>
-          You've internalized projectile motion. Next experiment will introduce
-          two-body interaction.
-        </Text>
-        <View style={{ gap: spacing.two, marginTop: spacing.three }}>
-          <Pressable onPress={onBack} style={[styles.overlayClose, styles.overlayCtaPrimary]}>
-            <Text style={[styles.overlayCloseText, { color: colors.bg }]}>BACK TO LEVELS</Text>
-          </Pressable>
-          <Pressable onPress={onReset} style={styles.overlayClose}>
-            <Text style={styles.overlayCloseText}>REPLAY</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
   );
 }
 
