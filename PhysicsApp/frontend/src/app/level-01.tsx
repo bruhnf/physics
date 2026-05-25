@@ -15,6 +15,7 @@
  */
 import { Canvas, Circle, Line, Path, Rect, Skia } from '@shopify/react-native-skia';
 import * as Haptics from 'expo-haptics';
+import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -115,6 +116,10 @@ const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(mi
 type Outcome = 'idle' | 'flying' | 'hit' | 'close' | 'miss' | 'wall-hit' | 'level-complete';
 
 export default function Level01Trajectory() {
+  // Prevent the iPhone from auto-sleeping while the player is on this screen —
+  // they can stare at a hard goal for minutes thinking about the math.
+  useKeepAwake();
+
   const { width: screenWidth } = useWindowDimensions();
   const canvasHeight = 260;
 

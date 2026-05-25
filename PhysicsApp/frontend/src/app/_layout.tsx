@@ -1,10 +1,18 @@
 import { Stack } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { colors } from '@/ui/theme';
 
 export default function RootLayout() {
+  useEffect(() => {
+    // App-wide portrait lock. Future landscape-oriented levels can override
+    // by calling ScreenOrientation.lockAsync from their own screen.
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style="light" />

@@ -3,7 +3,7 @@
     "name": "Physics",
     "slug": "physics",
     "version": "0.1.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "physics",
     "userInterfaceStyle": "dark",
@@ -35,7 +35,8 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
