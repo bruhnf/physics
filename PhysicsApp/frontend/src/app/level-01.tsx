@@ -31,6 +31,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useSounds } from '@/hooks/useSounds';
 import { Slider } from '@/ui/Slider';
 import { colors, fonts, letterSpacing, radii, spacing } from '@/ui/theme';
 
@@ -120,6 +121,8 @@ export default function Level01Trajectory() {
   // they can stare at a hard goal for minutes thinking about the math.
   useKeepAwake();
 
+  const playSound = useSounds();
+
   const { width: screenWidth } = useWindowDimensions();
   const canvasHeight = 260;
 
@@ -199,25 +202,40 @@ export default function Level01Trajectory() {
   // Advance timer for auto-progression after a hit
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const triggerHaptic = useCallback((kind: Outcome) => {
-    // Guarded — expo-haptics native module may be missing until the next dev build.
-    const swallow = () => {};
-    if (kind === 'hit')
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(swallow);
-    else if (kind === 'close')
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(swallow);
-    else if (kind === 'miss')
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(swallow);
-    else if (kind === 'level-complete')
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(swallow);
-  }, []);
+  // Unified haptic + sound feedback. All native calls guarded — they silently
+  // no-op if the corresponding native module isn't compiled into the dev client.
+  type FeedbackKind = 'hit' | 'close' | 'miss' | 'wall-hit' | 'level-complete' | 'launch';
+  const triggerFeedback = useCallback(
+    (kind: FeedbackKind) => {
+      const swallow = () => {};
+
+      // Haptic
+      if (kind === 'hit' || kind === 'level-complete')
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(swallow);
+      else if (kind === 'close')
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(swallow);
+      else if (kind === 'miss' || kind === 'wall-hit')
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(swallow);
+      else if (kind === 'launch')
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(swallow);
+
+      // Sound
+      if (kind === 'hit') playSound('hit');
+      else if (kind === 'close') playSound('close');
+      else if (kind === 'miss') playSound('miss');
+      else if (kind === 'wall-hit') playSound('wallHit');
+      else if (kind === 'level-complete') playSound('levelComplete');
+      else if (kind === 'launch') playSound('launch');
+    },
+    [playSound],
+  );
 
   const advanceToNextGoal = useCallback(() => {
     setCurrentGoalIndex((idx) => {
       const next = idx + 1;
       if (next >= GOALS.length) {
         setOutcome('level-complete');
-        triggerHaptic('level-complete');
+        triggerFeedback('level-complete');
         return idx; // clamp
       }
       setOutcome('idle');
@@ -226,7 +244,7 @@ export default function Level01Trajectory() {
       setVelocity(DEFAULT_VELOCITY);
       return next;
     });
-  }, [triggerHaptic]);
+  }, [triggerFeedback]);
 
   const onLanded = useCallback(
     (finalXMeters: number) => {
@@ -240,7 +258,7 @@ export default function Level01Trajectory() {
       else result = 'miss';
 
       setOutcome(result);
-      triggerHaptic(result);
+      triggerFeedback(result);
 
       if (result === 'hit') {
         setCompletedCount((c) => c + 1);
@@ -248,14 +266,14 @@ export default function Level01Trajectory() {
         advanceTimer.current = setTimeout(advanceToNextGoal, 1500);
       }
     },
-    [currentGoal.distanceM, currentGoal.widthM, triggerHaptic, advanceToNextGoal],
+    [currentGoal.distanceM, currentGoal.widthM, triggerFeedback, advanceToNextGoal],
   );
 
   const onWallHit = useCallback(() => {
     setLandingDistanceM(null);
     setOutcome('wall-hit');
-    triggerHaptic('miss');
-  }, [triggerHaptic]);
+    triggerFeedback('wall-hit');
+  }, [triggerFeedback]);
 
   useEffect(() => {
     return () => {
@@ -324,7 +342,7 @@ export default function Level01Trajectory() {
     setOutcome('flying');
     setLandingDistanceM(null);
     isFlying.value = true;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    triggerFeedback('launch');
     launchPulse.value = withSequence(
       withTiming(1, { duration: 60 }),
       withTiming(0, { duration: 840 }),
