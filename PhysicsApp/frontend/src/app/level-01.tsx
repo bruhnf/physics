@@ -47,23 +47,64 @@ const VELOCITY_MIN = 5;
 const VELOCITY_MAX = 60;
 
 // ---------- Goals ----------
+type Wall = { distanceM: number; heightM: number };
 type Goal = {
   distanceM: number;
   widthM: number;
   hint: string;
+  wall?: Wall;
 };
+
+// Wall configs verified solvable for v ≤ 60 m/s, θ ≤ 85°.
+// Each forces a meaningfully steeper θ than the naïve flat shot would use.
+const WALL_WIDTH_M = 1.0;
 
 const GOALS: Goal[] = [
   { distanceM: 30, widthM: 3.0, hint: 'Warm-up — any reasonable angle works' },
   { distanceM: 50, widthM: 2.0, hint: 'Find a v + θ pair that lands here' },
   { distanceM: 70, widthM: 2.0, hint: 'Further out — more energy needed' },
-  { distanceM: 40, widthM: 1.0, hint: 'Narrower — be precise' },
-  { distanceM: 60, widthM: 1.0, hint: 'Two solutions exist: low arc + high arc' },
-  { distanceM: 80, widthM: 1.0, hint: 'Reaching out — favor 45°' },
-  { distanceM: 25, widthM: 0.5, hint: 'Tiny + close — try a steep arc' },
-  { distanceM: 90, widthM: 1.0, hint: 'Push the engine — every degree counts' },
-  { distanceM: 100, widthM: 0.8, hint: 'Approaching max range — 45° gives most reach per m/s' },
-  { distanceM: 110, widthM: 0.5, hint: 'The final shot — calibrate carefully' },
+  {
+    distanceM: 40,
+    widthM: 1.0,
+    hint: 'First wall — try a steeper arc',
+    wall: { distanceM: 20, heightM: 7 },
+  },
+  {
+    distanceM: 60,
+    widthM: 1.0,
+    hint: 'Higher wall, narrower window',
+    wall: { distanceM: 30, heightM: 10 },
+  },
+  {
+    distanceM: 80,
+    widthM: 1.0,
+    hint: 'Tall midfield wall',
+    wall: { distanceM: 40, heightM: 15 },
+  },
+  {
+    distanceM: 25,
+    widthM: 0.5,
+    hint: 'Steep arc + tiny target — descend over the wall',
+    wall: { distanceM: 15, heightM: 8 },
+  },
+  {
+    distanceM: 90,
+    widthM: 1.0,
+    hint: 'Bigger wall, further out',
+    wall: { distanceM: 45, heightM: 18 },
+  },
+  {
+    distanceM: 100,
+    widthM: 0.8,
+    hint: 'Wall past midpoint — descend over it',
+    wall: { distanceM: 60, heightM: 20 },
+  },
+  {
+    distanceM: 110,
+    widthM: 0.5,
+    hint: 'Final shot — high wall + tight target',
+    wall: { distanceM: 55, heightM: 24 },
+  },
 ];
 
 const CLOSE_BUFFER_M = 3; // "close" = beyond goal half-width but within this extra margin
@@ -73,7 +114,7 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
 // ---------- Component ----------
-type Outcome = 'idle' | 'flying' | 'hit' | 'close' | 'miss' | 'level-complete';
+type Outcome = 'idle' | 'flying' | 'hit' | 'close' | 'miss' | 'wall-hit' | 'level-complete';
 
 export default function Level01Trajectory() {
   const { width: screenWidth } = useWindowDimensions();
@@ -103,6 +144,25 @@ export default function Level01Trajectory() {
   const velY = useSharedValue(0);
   const isFlying = useSharedValue(false);
   const trail = useSharedValue<number[]>([]);
+
+  // Wall state mirrored into shared values so the worklet can read it without
+  // crossing the JS/UI thread boundary on every frame.
+  const hasWall = useSharedValue(false);
+  const wallX = useSharedValue(0);
+  const wallHeight = useSharedValue(0);
+
+  useEffect(() => {
+    if (currentGoal.wall) {
+      hasWall.value = true;
+      wallX.value = CANNON_WORLD_X + currentGoal.wall.distanceM;
+      wallHeight.value = currentGoal.wall.heightM;
+    } else {
+      hasWall.value = false;
+      wallX.value = 0;
+      wallHeight.value = 0;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentGoalIndex]);
 
   const projPxX = useDerivedValue(() => posX.value * pxPerM);
   const projPxY = useDerivedValue(() => groundPxY - posY.value * pxPerM);
@@ -172,6 +232,12 @@ export default function Level01Trajectory() {
     [currentGoal.distanceM, currentGoal.widthM, triggerHaptic, advanceToNextGoal],
   );
 
+  const onWallHit = useCallback(() => {
+    setLandingDistanceM(null);
+    setOutcome('wall-hit');
+    triggerHaptic('miss');
+  }, [triggerHaptic]);
+
   useEffect(() => {
     return () => {
       if (advanceTimer.current) clearTimeout(advanceTimer.current);
@@ -183,9 +249,35 @@ export default function Level01Trajectory() {
     if (!isFlying.value) return;
     const dt = Math.min((info.timeSincePreviousFrame ?? 16.667) / 1000, 0.05);
 
+    // Snapshot previous frame position for continuous collision tests below.
+    const prevX = posX.value;
+    const prevY = posY.value;
+
     velY.value -= GRAVITY * dt;
     posX.value += velX.value * dt;
     posY.value += velY.value * dt;
+
+    // Continuous wall collision: if the projectile crossed the wall's x this
+    // frame, interpolate its y at the exact crossing point. Avoids tunneling
+    // through a 1m-thick wall at high velocity.
+    if (hasWall.value && prevX < wallX.value && posX.value >= wallX.value) {
+      const t = (wallX.value - prevX) / (posX.value - prevX);
+      const yAtWall = prevY + t * (posY.value - prevY);
+      if (yAtWall < wallHeight.value) {
+        // Clamp projectile to the wall face for a clean visual stop.
+        posX.value = wallX.value;
+        posY.value = yAtWall;
+        const px = posX.value * pxPerM;
+        const py = groundPxY - posY.value * pxPerM;
+        const next = trail.value.slice();
+        next.push(px, py);
+        if (next.length > 240) next.splice(0, next.length - 240);
+        trail.value = next;
+        isFlying.value = false;
+        runOnJS(onWallHit)();
+        return;
+      }
+    }
 
     const px = posX.value * pxPerM;
     const py = groundPxY - posY.value * pxPerM;
@@ -267,7 +359,7 @@ export default function Level01Trajectory() {
       ? colors.success
       : outcome === 'close'
         ? colors.warning
-        : outcome === 'miss'
+        : outcome === 'miss' || outcome === 'wall-hit'
           ? colors.failure
           : colors.textSecondary;
 
@@ -310,8 +402,33 @@ export default function Level01Trajectory() {
             y={groundPxY - 6}
             width={targetPxWidth}
             height={10}
-            color={isLevelComplete ? colors.success : colors.success}
+            color={colors.success}
           />
+
+          {/* Wall obstacle (goals 4+) */}
+          {currentGoal.wall && (
+            <>
+              <Rect
+                x={(CANNON_WORLD_X + currentGoal.wall.distanceM - WALL_WIDTH_M / 2) * pxPerM}
+                y={groundPxY - currentGoal.wall.heightM * pxPerM}
+                width={WALL_WIDTH_M * pxPerM}
+                height={currentGoal.wall.heightM * pxPerM}
+                color="#3a4250"
+              />
+              <Line
+                p1={{
+                  x: (CANNON_WORLD_X + currentGoal.wall.distanceM - WALL_WIDTH_M / 2) * pxPerM,
+                  y: groundPxY - currentGoal.wall.heightM * pxPerM,
+                }}
+                p2={{
+                  x: (CANNON_WORLD_X + currentGoal.wall.distanceM + WALL_WIDTH_M / 2) * pxPerM,
+                  y: groundPxY - currentGoal.wall.heightM * pxPerM,
+                }}
+                color={colors.warning}
+                strokeWidth={2}
+              />
+            </>
+          )}
 
           {/* Cannon */}
           <Circle cx={cannonPxX} cy={groundPxY} r={10} color={colors.primaryDeep} />
@@ -421,7 +538,11 @@ export default function Level01Trajectory() {
           <Text style={styles.equationActualRow}>
             <Text style={styles.equationActualLabel}>LAST LANDING: </Text>
             <Text style={[styles.equationActualValue, { color: outcomeColor }]}>
-              {landingDistanceM === null ? '—' : `${landingDistanceM.toFixed(1)} m`}
+              {outcome === 'wall-hit'
+                ? 'BLOCKED'
+                : landingDistanceM === null
+                  ? '—'
+                  : `${landingDistanceM.toFixed(1)} m`}
             </Text>
             {outcome === 'hit' && (
               <Text style={[styles.equationActualValue, { color: colors.success }]}>
@@ -442,6 +563,11 @@ export default function Level01Trajectory() {
                 {' // MISS — off by '}
                 {Math.abs(landingDistanceM - currentGoal.distanceM).toFixed(1)}
                 {' m'}
+              </Text>
+            )}
+            {outcome === 'wall-hit' && (
+              <Text style={[styles.equationActualValue, { color: colors.failure }]}>
+                {' // arc not steep enough'}
               </Text>
             )}
           </Text>
