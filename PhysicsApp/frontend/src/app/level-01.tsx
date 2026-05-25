@@ -52,60 +52,58 @@ type Goal = {
   distanceM: number;
   widthM: number;
   hint: string;
-  wall?: Wall;
+  hasWall?: boolean;
 };
 
-// Wall configs verified solvable for v ≤ 60 m/s, θ ≤ 85°.
-// Each forces a meaningfully steeper θ than the naïve flat shot would use.
 const WALL_WIDTH_M = 1.0;
+const WALL_VISUAL_CAP_M = 55; // canvas height budget for tallest walls
 
 const GOALS: Goal[] = [
   { distanceM: 30, widthM: 3.0, hint: 'Warm-up — any reasonable angle works' },
   { distanceM: 50, widthM: 2.0, hint: 'Find a v + θ pair that lands here' },
   { distanceM: 70, widthM: 2.0, hint: 'Further out — more energy needed' },
-  {
-    distanceM: 40,
-    widthM: 1.0,
-    hint: 'First wall — try a steeper arc',
-    wall: { distanceM: 20, heightM: 7 },
-  },
-  {
-    distanceM: 60,
-    widthM: 1.0,
-    hint: 'Higher wall, narrower window',
-    wall: { distanceM: 30, heightM: 10 },
-  },
-  {
-    distanceM: 80,
-    widthM: 1.0,
-    hint: 'Tall midfield wall',
-    wall: { distanceM: 40, heightM: 15 },
-  },
-  {
-    distanceM: 25,
-    widthM: 0.5,
-    hint: 'Steep arc + tiny target — descend over the wall',
-    wall: { distanceM: 15, heightM: 8 },
-  },
-  {
-    distanceM: 90,
-    widthM: 1.0,
-    hint: 'Bigger wall, further out',
-    wall: { distanceM: 45, heightM: 18 },
-  },
-  {
-    distanceM: 100,
-    widthM: 0.8,
-    hint: 'Wall past midpoint — descend over it',
-    wall: { distanceM: 60, heightM: 20 },
-  },
-  {
-    distanceM: 110,
-    widthM: 0.5,
-    hint: 'Final shot — high wall + tight target',
-    wall: { distanceM: 55, heightM: 24 },
-  },
+  { distanceM: 40, widthM: 1.0, hint: 'First wall — steeper arc required', hasWall: true },
+  { distanceM: 60, widthM: 1.0, hint: 'Wall + narrower window', hasWall: true },
+  { distanceM: 80, widthM: 1.0, hint: 'Mid-field wall — favor altitude', hasWall: true },
+  { distanceM: 25, widthM: 0.5, hint: 'Tiny target — almost vertical arc', hasWall: true },
+  { distanceM: 90, widthM: 1.0, hint: 'Bigger wall, further out', hasWall: true },
+  { distanceM: 100, widthM: 0.8, hint: 'Descend over the wall to hit the mark', hasWall: true },
+  { distanceM: 110, widthM: 0.5, hint: 'Final shot — high wall + tight target', hasWall: true },
 ];
+
+// Defaults always reset on goal advance / reset / replay so each fresh attempt
+// starts from a known baseline. The player iterates from here.
+const DEFAULT_ANGLE = 45;
+const DEFAULT_VELOCITY = 25;
+
+/**
+ * Pick a wall (position + height) for a target at distance D that is:
+ *   - large enough to be a meaningful obstacle (forces an arc, not a flat shot)
+ *   - small enough that the goal stays solvable inside the slider ranges
+ *     (v ≤ 60 m/s, θ ≤ 85°)
+ *   - capped at WALL_VISUAL_CAP_M so it fits in the canvas
+ *
+ * Position is randomized to 30–70% of the way from launcher to target.
+ * Height ceiling = 80% of the y achievable at that x by a θ=75° trajectory
+ * that exactly hits the target — a generous-but-not-impossible bound.
+ */
+function randomizeWall(targetDistanceM: number): Wall {
+  const distFrac = 0.3 + Math.random() * 0.4;
+  const dWall = Math.max(5, Math.round(targetDistanceM * distFrac));
+
+  const theta75 = (75 * Math.PI) / 180;
+  const tan75 = Math.tan(theta75);
+  const cos75sq = Math.cos(theta75) ** 2;
+  const vSq = (targetDistanceM * GRAVITY) / Math.sin(2 * theta75);
+  const maxYAtWall = dWall * tan75 - (GRAVITY * dWall * dWall) / (2 * vSq * cos75sq);
+
+  const safeMax = Math.min(maxYAtWall * 0.8, WALL_VISUAL_CAP_M);
+  const minH = Math.max(7, safeMax * 0.5);
+  const ceiling = Math.max(safeMax, minH + 1);
+  const heightM = Math.round(minH + Math.random() * (ceiling - minH));
+
+  return { distanceM: dWall, heightM };
+}
 
 const CLOSE_BUFFER_M = 3; // "close" = beyond goal half-width but within this extra margin
 
@@ -120,13 +118,20 @@ export default function Level01Trajectory() {
   const { width: screenWidth } = useWindowDimensions();
   const canvasHeight = 260;
 
-  const [angleDeg, setAngleDeg] = useState(45);
-  const [velocity, setVelocity] = useState(25);
+  const [angleDeg, setAngleDeg] = useState(DEFAULT_ANGLE);
+  const [velocity, setVelocity] = useState(DEFAULT_VELOCITY);
   const [currentGoalIndex, setCurrentGoalIndex] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
   const [outcome, setOutcome] = useState<Outcome>('idle');
   const [landingDistanceM, setLandingDistanceM] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  // Bumped on resetLevel() to force wall re-randomization even when
+  // currentGoalIndex resets to its existing value (0 → 0 wouldn't trigger
+  // the goal-change effect on its own).
+  const [sessionVersion, setSessionVersion] = useState(0);
+  const [currentWall, setCurrentWall] = useState<Wall | null>(() =>
+    GOALS[0].hasWall ? randomizeWall(GOALS[0].distanceM) : null,
+  );
 
   const pxPerM = screenWidth / WORLD_WIDTH_M;
   const groundPxY = canvasHeight - 24;
@@ -136,6 +141,13 @@ export default function Level01Trajectory() {
   const targetWorldX = CANNON_WORLD_X + currentGoal.distanceM;
   const targetPxX = targetWorldX * pxPerM;
   const targetPxWidth = currentGoal.widthM * pxPerM;
+
+  // Re-roll the wall whenever we land on a new goal (or replay the level).
+  useEffect(() => {
+    const goal = GOALS[currentGoalIndex];
+    setCurrentWall(goal.hasWall ? randomizeWall(goal.distanceM) : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentGoalIndex, sessionVersion]);
 
   // Physics state (UI thread)
   const posX = useSharedValue(CANNON_WORLD_X);
@@ -152,17 +164,17 @@ export default function Level01Trajectory() {
   const wallHeight = useSharedValue(0);
 
   useEffect(() => {
-    if (currentGoal.wall) {
+    if (currentWall) {
       hasWall.value = true;
-      wallX.value = CANNON_WORLD_X + currentGoal.wall.distanceM;
-      wallHeight.value = currentGoal.wall.heightM;
+      wallX.value = CANNON_WORLD_X + currentWall.distanceM;
+      wallHeight.value = currentWall.heightM;
     } else {
       hasWall.value = false;
       wallX.value = 0;
       wallHeight.value = 0;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentGoalIndex]);
+  }, [currentWall]);
 
   const projPxX = useDerivedValue(() => posX.value * pxPerM);
   const projPxY = useDerivedValue(() => groundPxY - posY.value * pxPerM);
@@ -205,6 +217,8 @@ export default function Level01Trajectory() {
       }
       setOutcome('idle');
       setLandingDistanceM(null);
+      setAngleDeg(DEFAULT_ANGLE);
+      setVelocity(DEFAULT_VELOCITY);
       return next;
     });
   }, [triggerHaptic]);
@@ -322,12 +336,17 @@ export default function Level01Trajectory() {
     trail.value = [];
     setOutcome('idle');
     setLandingDistanceM(null);
+    setAngleDeg(DEFAULT_ANGLE);
+    setVelocity(DEFAULT_VELOCITY);
   };
 
   const resetLevel = () => {
     reset();
     setCurrentGoalIndex(0);
     setCompletedCount(0);
+    // Bumping sessionVersion re-rolls the wall even though currentGoalIndex
+    // stays at 0 (which it already was at when going to a goal-0 wall before).
+    setSessionVersion((v) => v + 1);
   };
 
   const predictedRangeM = useMemo(() => {
@@ -405,24 +424,24 @@ export default function Level01Trajectory() {
             color={colors.success}
           />
 
-          {/* Wall obstacle (goals 4+) */}
-          {currentGoal.wall && (
+          {/* Wall obstacle (goals 4+, randomized per goal) */}
+          {currentWall && (
             <>
               <Rect
-                x={(CANNON_WORLD_X + currentGoal.wall.distanceM - WALL_WIDTH_M / 2) * pxPerM}
-                y={groundPxY - currentGoal.wall.heightM * pxPerM}
+                x={(CANNON_WORLD_X + currentWall.distanceM - WALL_WIDTH_M / 2) * pxPerM}
+                y={groundPxY - currentWall.heightM * pxPerM}
                 width={WALL_WIDTH_M * pxPerM}
-                height={currentGoal.wall.heightM * pxPerM}
+                height={currentWall.heightM * pxPerM}
                 color="#3a4250"
               />
               <Line
                 p1={{
-                  x: (CANNON_WORLD_X + currentGoal.wall.distanceM - WALL_WIDTH_M / 2) * pxPerM,
-                  y: groundPxY - currentGoal.wall.heightM * pxPerM,
+                  x: (CANNON_WORLD_X + currentWall.distanceM - WALL_WIDTH_M / 2) * pxPerM,
+                  y: groundPxY - currentWall.heightM * pxPerM,
                 }}
                 p2={{
-                  x: (CANNON_WORLD_X + currentGoal.wall.distanceM + WALL_WIDTH_M / 2) * pxPerM,
-                  y: groundPxY - currentGoal.wall.heightM * pxPerM,
+                  x: (CANNON_WORLD_X + currentWall.distanceM + WALL_WIDTH_M / 2) * pxPerM,
+                  y: groundPxY - currentWall.heightM * pxPerM,
                 }}
                 color={colors.warning}
                 strokeWidth={2}
