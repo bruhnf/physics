@@ -15,9 +15,18 @@
  */
 import { Canvas, Circle, Line, Path, Rect, Skia } from '@shopify/react-native-skia';
 import * as Haptics from 'expo-haptics';
-import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+// Lazy-require: expo-keep-awake throws at IMPORT time when its native module
+// isn't in the current dev client. Stub the hook to a no-op until the rebuild.
+let useKeepAwake: () => void = () => {};
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useKeepAwake = require('expo-keep-awake').useKeepAwake;
+} catch {
+  // Native module not present — screen will follow normal iOS sleep timer.
+}
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {

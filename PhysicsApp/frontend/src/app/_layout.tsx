@@ -1,16 +1,30 @@
 import { Stack } from 'expo-router';
-import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { colors } from '@/ui/theme';
 
+// Lazy-require: expo-screen-orientation throws at IMPORT time if its native
+// module isn't compiled into the dev client. Wrapping the require in try/catch
+// lets the layout load on older builds (sans portrait lock) and pick up the
+// real module automatically on the rebuild that includes it.
+let ScreenOrientation: typeof import('expo-screen-orientation') | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ScreenOrientation = require('expo-screen-orientation');
+} catch {
+  // Native module not present in this dev client build — orientation lock skipped.
+}
+
 export default function RootLayout() {
   useEffect(() => {
+    if (!ScreenOrientation) return;
     // App-wide portrait lock. Future landscape-oriented levels can override
     // by calling ScreenOrientation.lockAsync from their own screen.
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(
+      () => {},
+    );
   }, []);
 
   return (
