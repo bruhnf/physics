@@ -37,6 +37,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useGoals } from '@/hooks/useGoals';
 import { useSounds } from '@/hooks/useSounds';
 import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
@@ -87,78 +88,16 @@ type Goal = {
   hint: string;
 };
 
-const GOALS: Goal[] = [
-  {
-    targetMassKg: 1.0,
-    targetStartM: 15,
-    zoneCenterM: 25,
-    zoneWidthM: 10,
-    hint: 'Equal masses — what happens to the player ball?',
-  },
-  {
-    targetMassKg: 2.0,
-    targetStartM: 20,
-    zoneCenterM: 32,
-    zoneWidthM: 5,
-    hint: 'Heavier target needs more momentum',
-  },
-  {
-    targetMassKg: 0.5,
-    targetStartM: 15,
-    zoneCenterM: 38,
-    zoneWidthM: 4,
-    hint: 'Light target — small mass with high v transfers a lot',
-  },
-  {
-    targetMassKg: 3.0,
-    targetStartM: 25,
-    zoneCenterM: 37,
-    zoneWidthM: 4,
-    hint: 'Heavy target, short throw — try matching masses',
-  },
-  {
-    targetMassKg: 1.0,
-    targetStartM: 10,
-    zoneCenterM: 47,
-    zoneWidthM: 4,
-    hint: 'Long throw — friction eats your reach',
-  },
-  {
-    targetMassKg: 5.0,
-    targetStartM: 20,
-    zoneCenterM: 30,
-    zoneWidthM: 3,
-    hint: 'Heavy + precise — m₁ ≈ m₂ delivers cleanly',
-  },
-  {
-    targetMassKg: 2.0,
-    targetStartM: 15,
-    zoneCenterM: 51,
-    zoneWidthM: 3,
-    hint: 'Far + medium target — crank velocity',
-  },
-  {
-    targetMassKg: 4.0,
-    targetStartM: 30,
-    zoneCenterM: 49,
-    zoneWidthM: 3,
-    hint: 'Heavy + far — push m₁ high',
-  },
-  {
-    targetMassKg: 0.5,
-    targetStartM: 10,
-    zoneCenterM: 60,
-    zoneWidthM: 4,
-    hint: 'Very light target — lean on v₁',
-  },
-  {
-    targetMassKg: 10.0,
-    targetStartM: 25,
-    zoneCenterM: 36,
-    zoneWidthM: 2,
-    hint: 'Bowling-ball target — needs maximum m₁',
-  },
-];
+// Goal data fetched via useGoals('collisions') from the backend; bundled
+// fallback in src/data/starter-pack.ts. DEFAULT_GOAL is a safety stub for
+// the (unlikely) case where goals is empty during first render.
+const DEFAULT_GOAL: Goal = {
+  targetMassKg: 1,
+  targetStartM: 15,
+  zoneCenterM: 25,
+  zoneWidthM: 10,
+  hint: '',
+};
 
 const CLOSE_BUFFER_M = 3;
 
@@ -187,7 +126,12 @@ export default function Level02Collisions() {
   const [overlayDismissed, setOverlayDismissed] = useState(false);
   const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
 
-  const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
+  const { goals: fetchedGoals } = useGoals<Omit<Goal, 'hint'>>('collisions');
+  const goals = useMemo<Goal[]>(
+    () => fetchedGoals.map((g) => ({ ...g.config, hint: g.hint ?? '' })),
+    [fetchedGoals],
+  );
+  const currentGoal = goals[Math.min(currentGoalIndex, Math.max(0, goals.length - 1))] ?? DEFAULT_GOAL;
   const pxPerM = screenWidth / WORLD_WIDTH_M;
   const trackY = canvasHeight - 50;
 
@@ -276,7 +220,7 @@ export default function Level02Collisions() {
   const advanceToNextGoal = useCallback(() => {
     setCurrentGoalIndex((idx) => {
       const next = idx + 1;
-      if (next >= GOALS.length) {
+      if (next >= goals.length) {
         setOutcome('level-complete');
         triggerFeedback('level-complete');
         return idx;
@@ -514,7 +458,7 @@ export default function Level02Collisions() {
       <View style={styles.hud}>
         <GoalCounter
           index={currentGoalIndex}
-          total={GOALS.length}
+          total={goals.length}
           title={`STOP ${currentGoal.targetMassKg.toFixed(1)} kg TARGET IN ZONE @ ${currentGoal.zoneCenterM}m`}
           hint={currentGoal.hint}
         />
@@ -620,7 +564,7 @@ export default function Level02Collisions() {
         </Animated.View>
 
         <GoalTileStrip
-          total={GOALS.length}
+          total={goals.length}
           currentIndex={currentGoalIndex}
           levelComplete={isLevelComplete}
         />
@@ -631,7 +575,7 @@ export default function Level02Collisions() {
       {isLevelComplete && (
         <LevelCompleteOverlay
           completedCount={completedCount}
-          totalGoals={GOALS.length}
+          totalGoals={goals.length}
           levelName="Level 02 — Collisions"
           nextHint="Next experiment: inclined plane — friction + Newton's 2nd law in action."
           onReset={resetLevel}

@@ -20,12 +20,15 @@ const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
 
 app.use(helmet());
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN?.split(',').map((s) => s.trim()) ?? true,
-    credentials: false,
-  }),
-);
+// CORS: in dev, allow all origins (the dev iPhone connects from arbitrary
+// hostnames depending on Wi-Fi setup). In prod, set CORS_ORIGIN to a comma-
+// separated whitelist of allowed origins.
+const corsOriginEnv = process.env.CORS_ORIGIN?.trim();
+const corsOrigin =
+  !corsOriginEnv || corsOriginEnv === '*'
+    ? true
+    : corsOriginEnv.split(',').map((s) => s.trim());
+app.use(cors({ origin: corsOrigin, credentials: false }));
 app.use(express.json({ limit: '1mb' }));
 
 const limiter = rateLimit({

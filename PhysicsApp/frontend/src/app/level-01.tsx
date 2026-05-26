@@ -40,6 +40,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useGoals } from '@/hooks/useGoals';
 import { useSounds } from '@/hooks/useSounds';
 import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
@@ -77,18 +78,11 @@ type Goal = {
 const WALL_WIDTH_M = 1.0;
 const WALL_VISUAL_CAP_M = 55; // canvas height budget for tallest walls
 
-const GOALS: Goal[] = [
-  { distanceM: 30, widthM: 3.0, hint: 'Warm-up — any reasonable angle works' },
-  { distanceM: 50, widthM: 2.0, hint: 'Find a v + θ pair that lands here' },
-  { distanceM: 70, widthM: 2.0, hint: 'Further out — more energy needed' },
-  { distanceM: 40, widthM: 1.0, hint: 'First wall — steeper arc required', hasWall: true },
-  { distanceM: 60, widthM: 1.0, hint: 'Wall + narrower window', hasWall: true },
-  { distanceM: 80, widthM: 1.0, hint: 'Mid-field wall — favor altitude', hasWall: true },
-  { distanceM: 25, widthM: 0.5, hint: 'Tiny target — almost vertical arc', hasWall: true },
-  { distanceM: 90, widthM: 1.0, hint: 'Bigger wall, further out', hasWall: true },
-  { distanceM: 100, widthM: 0.8, hint: 'Descend over the wall to hit the mark', hasWall: true },
-  { distanceM: 110, widthM: 0.5, hint: 'Final shot — high wall + tight target', hasWall: true },
-];
+// Goal data now lives in the backend (PhysicsApp/backend) and is fetched via
+// useGoals('trajectory'). Bundled fallback is in src/data/starter-pack.ts.
+// Used only as a render-time safety fallback if the goals array is somehow
+// empty (shouldn't happen — starter-pack always provides 10).
+const DEFAULT_GOAL: Goal = { distanceM: 50, widthM: 2, hint: '' };
 
 // Defaults always reset on goal advance / reset / replay so each fresh attempt
 // starts from a known baseline. The player iterates from here.
@@ -143,6 +137,12 @@ export default function Level01Trajectory() {
   const { width: screenWidth } = useWindowDimensions();
   const canvasHeight = 260;
 
+  const { goals: fetchedGoals } = useGoals<Omit<Goal, 'hint'>>('trajectory');
+  const goals = useMemo<Goal[]>(
+    () => fetchedGoals.map((g) => ({ ...g.config, hint: g.hint ?? '' })),
+    [fetchedGoals],
+  );
+
   const [angleDeg, setAngleDeg] = useState(DEFAULT_ANGLE);
   const [velocity, setVelocity] = useState(DEFAULT_VELOCITY);
   const [currentGoalIndex, setCurrentGoalIndex] = useState(0);
@@ -159,25 +159,26 @@ export default function Level01Trajectory() {
   // currentGoalIndex resets to its existing value (0 → 0 wouldn't trigger
   // the goal-change effect on its own).
   const [sessionVersion, setSessionVersion] = useState(0);
-  const [currentWall, setCurrentWall] = useState<Wall | null>(() =>
-    GOALS[0].hasWall ? randomizeWall(GOALS[0].distanceM) : null,
-  );
+  const [currentWall, setCurrentWall] = useState<Wall | null>(null);
 
   const pxPerM = screenWidth / WORLD_WIDTH_M;
   const groundPxY = canvasHeight - 24;
   const cannonPxX = CANNON_WORLD_X * pxPerM;
 
-  const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
+  const currentGoal = goals[Math.min(currentGoalIndex, Math.max(0, goals.length - 1))] ?? DEFAULT_GOAL;
   const targetWorldX = CANNON_WORLD_X + currentGoal.distanceM;
   const targetPxX = targetWorldX * pxPerM;
   const targetPxWidth = currentGoal.widthM * pxPerM;
 
   // Re-roll the wall whenever we land on a new goal (or replay the level).
+  // Also fires when goals first populates from backend / starter-pack.
   useEffect(() => {
-    const goal = GOALS[currentGoalIndex];
+    if (goals.length === 0) return;
+    const goal = goals[currentGoalIndex];
+    if (!goal) return;
     setCurrentWall(goal.hasWall ? randomizeWall(goal.distanceM) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentGoalIndex, sessionVersion]);
+  }, [currentGoalIndex, sessionVersion, goals]);
 
   // Physics state (UI thread)
   const posX = useSharedValue(CANNON_WORLD_X);
@@ -255,7 +256,7 @@ export default function Level01Trajectory() {
   const advanceToNextGoal = useCallback(() => {
     setCurrentGoalIndex((idx) => {
       const next = idx + 1;
-      if (next >= GOALS.length) {
+      if (next >= goals.length) {
         setOutcome('level-complete');
         triggerFeedback('level-complete');
         return idx; // clamp
@@ -513,7 +514,7 @@ export default function Level01Trajectory() {
       <View style={styles.hud}>
         <GoalCounter
           index={currentGoalIndex}
-          total={GOALS.length}
+          total={goals.length}
           title={`HIT ${currentGoal.widthM.toFixed(1)} m TARGET @ ${currentGoal.distanceM} m`}
           hint={currentGoal.hint}
         />
@@ -623,7 +624,7 @@ export default function Level01Trajectory() {
         </Animated.View>
 
         <GoalTileStrip
-          total={GOALS.length}
+          total={goals.length}
           currentIndex={currentGoalIndex}
           levelComplete={isLevelComplete}
         />
@@ -636,7 +637,7 @@ export default function Level01Trajectory() {
       {isLevelComplete && (
         <LevelCompleteOverlay
           completedCount={completedCount}
-          totalGoals={GOALS.length}
+          totalGoals={goals.length}
           levelName="Level 01 — Trajectory"
           nextHint="Next experiment will introduce two-body interaction — collisions + momentum."
           onReset={resetLevel}

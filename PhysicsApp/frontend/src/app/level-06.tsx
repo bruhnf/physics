@@ -34,6 +34,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useGoals } from '@/hooks/useGoals';
 import { useSounds } from '@/hooks/useSounds';
 import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
@@ -73,78 +74,10 @@ type Goal = {
   hint: string;
 };
 
-const GOALS: Goal[] = [
-  {
-    frictionMu: 0.2,
-    valleyWidthM: 2,
-    targetHeightM: 3,
-    zoneHeightM: 1,
-    hint: 'Warm-up — small friction loss',
-  },
-  {
-    frictionMu: 0.3,
-    valleyWidthM: 3,
-    targetHeightM: 5,
-    zoneHeightM: 0.8,
-    hint: 'Wider valley, more loss',
-  },
-  {
-    frictionMu: 0.5,
-    valleyWidthM: 2,
-    targetHeightM: 2,
-    zoneHeightM: 0.6,
-    hint: 'Heavy friction, short valley',
-  },
-  {
-    frictionMu: 0.1,
-    valleyWidthM: 5,
-    targetHeightM: 7,
-    zoneHeightM: 0.8,
-    hint: 'Slippery valley, far target',
-  },
-  {
-    frictionMu: 0.4,
-    valleyWidthM: 4,
-    targetHeightM: 4,
-    zoneHeightM: 0.5,
-    hint: 'Try the mass slider — does it matter?',
-  },
-  {
-    frictionMu: 0.6,
-    valleyWidthM: 3,
-    targetHeightM: 1,
-    zoneHeightM: 0.4,
-    hint: 'Almost all energy lost in valley',
-  },
-  {
-    frictionMu: 0.2,
-    valleyWidthM: 8,
-    targetHeightM: 6,
-    zoneHeightM: 0.5,
-    hint: 'Long valley — accumulated friction',
-  },
-  {
-    frictionMu: 0.5,
-    valleyWidthM: 5,
-    targetHeightM: 3,
-    zoneHeightM: 0.4,
-    hint: 'Mass STILL doesn\'t matter — try changing it',
-  },
-  {
-    frictionMu: 0.3,
-    valleyWidthM: 10,
-    targetHeightM: 4,
-    zoneHeightM: 0.4,
-    hint: 'Wide friction zone',
-  },
-  {
-    frictionMu: 0.7,
-    valleyWidthM: 6,
-    targetHeightM: 2,
-    zoneHeightM: 0.3,
-    hint: 'Final — heavy friction + tight target',
-  },
-];
+// Goal data fetched via useGoals('energy') from the backend;
+// bundled fallback in src/data/starter-pack.ts. DEFAULT_GOAL is a safety
+// stub for the (unlikely) case where goals is empty during first render.
+const DEFAULT_GOAL: Goal = { frictionMu: 0.2, valleyWidthM: 2, targetHeightM: 3, zoneHeightM: 1, hint: '' };
 
 const CLOSE_BUFFER_M = 0.6;
 
@@ -182,7 +115,12 @@ export default function Level06Energy() {
   const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
-  const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
+  const { goals: fetchedGoals } = useGoals<Omit<Goal, 'hint'>>('energy');
+  const goals = useMemo<Goal[]>(
+    () => fetchedGoals.map((g) => ({ ...g.config, hint: g.hint ?? '' })),
+    [fetchedGoals],
+  );
+  const currentGoal = goals[Math.min(currentGoalIndex, Math.max(0, goals.length - 1))] ?? DEFAULT_GOAL;
 
   // Track geometry derived from current goal's valley width.
   // World layout (in meters, with y=0 at ground):
@@ -262,7 +200,7 @@ export default function Level06Energy() {
   const advanceToNextGoal = useCallback(() => {
     setCurrentGoalIndex((idx) => {
       const next = idx + 1;
-      if (next >= GOALS.length) {
+      if (next >= goals.length) {
         setOutcome('level-complete');
         triggerFeedback('level-complete');
         return idx;
@@ -542,7 +480,7 @@ export default function Level06Energy() {
       <View style={styles.hud}>
         <GoalCounter
           index={currentGoalIndex}
-          total={GOALS.length}
+          total={goals.length}
           title={`STOP CART @ ${currentGoal.targetHeightM}m HEIGHT // VALLEY: ${currentGoal.valleyWidthM}m, μ=${currentGoal.frictionMu.toFixed(2)}`}
           hint={currentGoal.hint}
         />
@@ -660,7 +598,7 @@ export default function Level06Energy() {
         </Animated.View>
 
         <GoalTileStrip
-          total={GOALS.length}
+          total={goals.length}
           currentIndex={currentGoalIndex}
           levelComplete={isLevelComplete}
         />
@@ -671,7 +609,7 @@ export default function Level06Energy() {
       {isLevelComplete && (
         <LevelCompleteOverlay
           completedCount={completedCount}
-          totalGoals={GOALS.length}
+          totalGoals={goals.length}
           levelName="Level 06 — Energy Conservation"
           nextHint="You've completed the foundational physics curriculum. More experiments to come — orbital mechanics, EM, and beyond."
           onReset={resetLevel}

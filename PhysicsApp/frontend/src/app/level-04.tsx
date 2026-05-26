@@ -37,6 +37,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useGoals } from '@/hooks/useGoals';
 import { useSounds } from '@/hooks/useSounds';
 import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
@@ -74,18 +75,10 @@ type Goal = {
   hint: string;
 };
 
-const GOALS: Goal[] = [
-  { zoneCenterM: 2, zoneWidthM: 1.5, hint: 'Warm-up — generous zone' },
-  { zoneCenterM: 3.5, zoneWidthM: 1, hint: 'Slightly further, slightly tighter' },
-  { zoneCenterM: 5, zoneWidthM: 1, hint: 'Mid-range — what L gives max range?' },
-  { zoneCenterM: 1, zoneWidthM: 0.5, hint: 'Pull back close — short swing' },
-  { zoneCenterM: 6, zoneWidthM: 0.8, hint: 'Far + medium' },
-  { zoneCenterM: 7, zoneWidthM: 0.6, hint: 'Reaching out' },
-  { zoneCenterM: 4, zoneWidthM: 0.4, hint: 'Precise mid-range' },
-  { zoneCenterM: 8, zoneWidthM: 0.5, hint: 'Near max-range territory' },
-  { zoneCenterM: 0.6, zoneWidthM: 0.3, hint: 'Very close, very tight' },
-  { zoneCenterM: 9, zoneWidthM: 0.4, hint: 'Final shot — push to max range' },
-];
+// Goal data fetched via useGoals('pendulum') from the backend;
+// bundled fallback in src/data/starter-pack.ts. DEFAULT_GOAL is a safety
+// stub for the (unlikely) case where goals is empty during first render.
+const DEFAULT_GOAL: Goal = { zoneCenterM: 2, zoneWidthM: 1.5, hint: '' };
 
 const CLOSE_BUFFER_M = 1;
 
@@ -130,7 +123,12 @@ export default function Level04Pendulum() {
   const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
-  const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
+  const { goals: fetchedGoals } = useGoals<Omit<Goal, 'hint'>>('pendulum');
+  const goals = useMemo<Goal[]>(
+    () => fetchedGoals.map((g) => ({ ...g.config, hint: g.hint ?? '' })),
+    [fetchedGoals],
+  );
+  const currentGoal = goals[Math.min(currentGoalIndex, Math.max(0, goals.length - 1))] ?? DEFAULT_GOAL;
 
   // Snapshots captured at launch
   const LSnap = useSharedValue(DEFAULT_L);
@@ -216,7 +214,7 @@ export default function Level04Pendulum() {
   const advanceToNextGoal = useCallback(() => {
     setCurrentGoalIndex((idx) => {
       const next = idx + 1;
-      if (next >= GOALS.length) {
+      if (next >= goals.length) {
         setOutcome('level-complete');
         triggerFeedback('level-complete');
         return idx;
@@ -499,7 +497,7 @@ export default function Level04Pendulum() {
       <View style={styles.hud}>
         <GoalCounter
           index={currentGoalIndex}
-          total={GOALS.length}
+          total={goals.length}
           title={`LAND BOB IN ZONE @ ${currentGoal.zoneCenterM}m FROM PIVOT`}
           hint={currentGoal.hint}
         />
@@ -603,7 +601,7 @@ export default function Level04Pendulum() {
         </Animated.View>
 
         <GoalTileStrip
-          total={GOALS.length}
+          total={goals.length}
           currentIndex={currentGoalIndex}
           levelComplete={isLevelComplete}
         />
@@ -614,7 +612,7 @@ export default function Level04Pendulum() {
       {isLevelComplete && (
         <LevelCompleteOverlay
           completedCount={completedCount}
-          totalGoals={GOALS.length}
+          totalGoals={goals.length}
           levelName="Level 04 — Pendulum"
           nextHint="Next experiment: springs — Hooke's law and the other classic SHM system."
           onReset={resetLevel}

@@ -38,6 +38,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useGoals } from '@/hooks/useGoals';
 import { useSounds } from '@/hooks/useSounds';
 import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
@@ -81,78 +82,10 @@ type Goal = {
   hint: string;
 };
 
-const GOALS: Goal[] = [
-  {
-    surface: 'WOOD',
-    mu: 0.2,
-    zoneCenterM: 10,
-    zoneWidthM: 4,
-    hint: 'Solid surface — moderate friction',
-  },
-  {
-    surface: 'GRASS',
-    mu: 0.3,
-    zoneCenterM: 7,
-    zoneWidthM: 2,
-    hint: 'Grippier surface, narrower zone',
-  },
-  {
-    surface: 'METAL',
-    mu: 0.1,
-    zoneCenterM: 16,
-    zoneWidthM: 4,
-    hint: 'Slick — block carries energy far',
-  },
-  {
-    surface: 'RUBBER',
-    mu: 0.5,
-    zoneCenterM: 2.5,
-    zoneWidthM: 1,
-    hint: 'Heavy friction — short throw, tight target',
-  },
-  {
-    surface: 'CARPET',
-    mu: 0.4,
-    zoneCenterM: 5,
-    zoneWidthM: 1.5,
-    hint: 'Carpet bites hard — moderate range, deliberate angle',
-  },
-  {
-    surface: 'SANDPAPER',
-    mu: 0.7,
-    zoneCenterM: 1.3,
-    zoneWidthM: 0.6,
-    hint: 'Maximum friction — needs steep ramp to slide at all',
-  },
-  {
-    surface: 'METAL',
-    mu: 0.1,
-    zoneCenterM: 27,
-    zoneWidthM: 4,
-    hint: 'Slick + far — find the angle that maximizes range',
-  },
-  {
-    surface: 'GRASS',
-    mu: 0.3,
-    zoneCenterM: 11,
-    zoneWidthM: 2,
-    hint: 'Near grass-friction ceiling',
-  },
-  {
-    surface: 'WOOD',
-    mu: 0.2,
-    zoneCenterM: 19.5,
-    zoneWidthM: 3,
-    hint: 'Near wood-friction ceiling',
-  },
-  {
-    surface: 'ICE',
-    mu: 0.05,
-    zoneCenterM: 36,
-    zoneWidthM: 2,
-    hint: 'Slick + far + precise',
-  },
-];
+// Goal data fetched via useGoals('inclined-plane') from the backend;
+// bundled fallback in src/data/starter-pack.ts. DEFAULT_GOAL is a safety
+// stub for the (unlikely) case where goals is empty during first render.
+const DEFAULT_GOAL: Goal = { surface: 'WOOD', mu: 0.2, zoneCenterM: 10, zoneWidthM: 4, hint: '' };
 
 const CLOSE_BUFFER_M = 2;
 
@@ -184,7 +117,12 @@ export default function Level03InclinedPlane() {
   const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
-  const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
+  const { goals: fetchedGoals } = useGoals<Omit<Goal, 'hint'>>('inclined-plane');
+  const goals = useMemo<Goal[]>(
+    () => fetchedGoals.map((g) => ({ ...g.config, hint: g.hint ?? '' })),
+    [fetchedGoals],
+  );
+  const currentGoal = goals[Math.min(currentGoalIndex, Math.max(0, goals.length - 1))] ?? DEFAULT_GOAL;
 
   // Snapshots captured at launch (so worklet sees stable values).
   const hSnap = useSharedValue(DEFAULT_H);
@@ -264,7 +202,7 @@ export default function Level03InclinedPlane() {
   const advanceToNextGoal = useCallback(() => {
     setCurrentGoalIndex((idx) => {
       const next = idx + 1;
-      if (next >= GOALS.length) {
+      if (next >= goals.length) {
         setOutcome('level-complete');
         triggerFeedback('level-complete');
         return idx;
@@ -537,7 +475,7 @@ export default function Level03InclinedPlane() {
       <View style={styles.hud}>
         <GoalCounter
           index={currentGoalIndex}
-          total={GOALS.length}
+          total={goals.length}
           title={`STOP IN ZONE @ ${currentGoal.zoneCenterM}m · SURFACE: ${currentGoal.surface} (μ=${currentGoal.mu.toFixed(2)})`}
           hint={currentGoal.hint}
         />
@@ -654,7 +592,7 @@ export default function Level03InclinedPlane() {
         </Animated.View>
 
         <GoalTileStrip
-          total={GOALS.length}
+          total={goals.length}
           currentIndex={currentGoalIndex}
           levelComplete={isLevelComplete}
         />
@@ -665,7 +603,7 @@ export default function Level03InclinedPlane() {
       {isLevelComplete && (
         <LevelCompleteOverlay
           completedCount={completedCount}
-          totalGoals={GOALS.length}
+          totalGoals={goals.length}
           levelName="Level 03 — Inclined Plane"
           nextHint="Next experiment: pendulum — periodic motion and SHM."
           onReset={resetLevel}

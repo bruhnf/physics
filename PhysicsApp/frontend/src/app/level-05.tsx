@@ -32,6 +32,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useGoals } from '@/hooks/useGoals';
 import { useSounds } from '@/hooks/useSounds';
 import { useSettings } from '@/store/useSettings';
 import { ActionButton } from '@/ui/ActionButton';
@@ -75,18 +76,10 @@ type Goal = {
 // All distances measured from where the natural spring end is — i.e., the
 // block's "rest" position before compression. Block exits spring at x=0
 // (in track coords) and rolls forward.
-const GOALS: Goal[] = [
-  { massKg: 1.0, zoneCenterM: 6, zoneWidthM: 3, hint: 'Warm-up — wide zone' },
-  { massKg: 2.0, zoneCenterM: 4, zoneWidthM: 2, hint: 'Heavier block, same launcher' },
-  { massKg: 1.0, zoneCenterM: 11, zoneWidthM: 2, hint: 'Further out' },
-  { massKg: 3.0, zoneCenterM: 16, zoneWidthM: 3, hint: 'Heavy + far — more energy needed' },
-  { massKg: 1.0, zoneCenterM: 1.5, zoneWidthM: 0.8, hint: 'Soft launch — minimize energy' },
-  { massKg: 5.0, zoneCenterM: 13, zoneWidthM: 2, hint: 'Heavy block, mid range' },
-  { massKg: 2.0, zoneCenterM: 22, zoneWidthM: 2, hint: 'Crank k or x — likely both' },
-  { massKg: 1.0, zoneCenterM: 32, zoneWidthM: 2, hint: 'Long throw — k near max' },
-  { massKg: 4.0, zoneCenterM: 9, zoneWidthM: 1, hint: 'Heavy + tight — precise energy' },
-  { massKg: 3.0, zoneCenterM: 41, zoneWidthM: 2, hint: 'Final — max compression + max k' },
-];
+// Goal data fetched via useGoals('springs') from the backend;
+// bundled fallback in src/data/starter-pack.ts. DEFAULT_GOAL is a safety
+// stub for the (unlikely) case where goals is empty during first render.
+const DEFAULT_GOAL: Goal = { massKg: 1, zoneCenterM: 6, zoneWidthM: 3, hint: '' };
 
 const CLOSE_BUFFER_M = 2;
 
@@ -120,7 +113,12 @@ export default function Level05Springs() {
   const showStartOverlay = instructionsEnabled && !sessionDismissed && !overlayDismissed;
   const [sessionVersion, setSessionVersion] = useState(0);
 
-  const currentGoal = GOALS[Math.min(currentGoalIndex, GOALS.length - 1)];
+  const { goals: fetchedGoals } = useGoals<Omit<Goal, 'hint'>>('springs');
+  const goals = useMemo<Goal[]>(
+    () => fetchedGoals.map((g) => ({ ...g.config, hint: g.hint ?? '' })),
+    [fetchedGoals],
+  );
+  const currentGoal = goals[Math.min(currentGoalIndex, Math.max(0, goals.length - 1))] ?? DEFAULT_GOAL;
 
   // Snapshots taken at launch (worklet reads these)
   const kSnap = useSharedValue(DEFAULT_K);
@@ -194,7 +192,7 @@ export default function Level05Springs() {
   const advanceToNextGoal = useCallback(() => {
     setCurrentGoalIndex((idx) => {
       const next = idx + 1;
-      if (next >= GOALS.length) {
+      if (next >= goals.length) {
         setOutcome('level-complete');
         triggerFeedback('level-complete');
         return idx;
@@ -407,7 +405,7 @@ export default function Level05Springs() {
       <View style={styles.hud}>
         <GoalCounter
           index={currentGoalIndex}
-          total={GOALS.length}
+          total={goals.length}
           title={`STOP ${currentGoal.massKg.toFixed(1)} kg BLOCK IN ZONE @ ${currentGoal.zoneCenterM}m`}
           hint={currentGoal.hint}
         />
@@ -511,7 +509,7 @@ export default function Level05Springs() {
         </Animated.View>
 
         <GoalTileStrip
-          total={GOALS.length}
+          total={goals.length}
           currentIndex={currentGoalIndex}
           levelComplete={isLevelComplete}
         />
@@ -522,7 +520,7 @@ export default function Level05Springs() {
       {isLevelComplete && (
         <LevelCompleteOverlay
           completedCount={completedCount}
-          totalGoals={GOALS.length}
+          totalGoals={goals.length}
           levelName="Level 05 — Springs"
           nextHint="Next experiment: energy conservation — KE ↔ PE on a curved track."
           onReset={resetLevel}
